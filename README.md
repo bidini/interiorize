@@ -1,3 +1,3 @@
-# interiorize
+# interiorize:
 
-Interiorize: Simple Models for Planetary Interiors.
+Simple Models of Planetary Interiors.

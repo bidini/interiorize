@@ -1,0 +1,15 @@
+MANIFEST.in
+README.md
+setup.py
+interiorize/__init__.py
+interiorize/polytrope.py
+interiorize/polytrope.stable.py
+interiorize/solvers.py
+interiorize/static_stability.py
+interiorize.egg-info/PKG-INFO
+interiorize.egg-info/SOURCES.txt
+interiorize.egg-info/dependency_links.txt
+interiorize.egg-info/requires.txt
+interiorize.egg-info/top_level.txt
+owise/__init__.py
+test/__init__.py

@@ -1,0 +1,6 @@
+scipy
+numpy
+matplotlib
+pygyre
+sympy
+pytest

@@ -1,0 +1,6 @@
+- Impliment: BIG-ENDIAN, LOW-ENDIAN check and use of flip in binary words.
+- Implement: Python class to manage modes from mineos output
+- Implement: Intuitive input file 
+- Implement: Icy shell on top of ocean
+- Test: Does mineos handle internal waves (finite Brunt-Vaisala frequency?)
+- Test: Write down the equations solved by mineos and reproduce procedure

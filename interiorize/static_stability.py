@@ -9,7 +9,7 @@ from scipy.integrate import cumtrapz
 from scipy.special import factorial
 from scipy.special import lpmv as Plm
 import matplotlib.pyplot as plt
-from tides.solvers import cheby
+from interiorize.solvers import cheby
 import pdb
 
 import subprocess
@@ -665,7 +665,7 @@ class HeavyElements:
 
         dt = pg.read_output(file_mode)
         mode['om0'] = np.real(dt.meta['omega'])
-        keys = ['xi_r','xi_h','eul_rho','rho','x']
+        keys = ['xi_r','xi_h','eul_rho','rho','x','eul_phi']
         [mode.setdefault(key, dt[key]) for key in keys]        
         mode['l'] = dt.meta['l']
         mode['m'] = dt.meta['m']
@@ -687,6 +687,7 @@ class HeavyElements:
         return k
 
     def write_gyre_model(self, downsample=False, outdir=None):
+        " Based on Chris Mankovich 'kronos'"
         brunt_key = 'N'
 
         vec = {'l': self.r}

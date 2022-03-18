@@ -665,7 +665,7 @@ class HeavyElements:
 
         dt = pg.read_output(file_mode)
         mode['om0'] = np.real(dt.meta['omega'])
-        keys = ['xi_r','xi_h','eul_rho','rho','x']
+        keys = ['xi_r','xi_h','eul_rho','rho','x','eul_phi']
         [mode.setdefault(key, dt[key]) for key in keys]        
         mode['l'] = dt.meta['l']
         mode['m'] = dt.meta['m']

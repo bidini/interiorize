@@ -1,14 +1,4 @@
-# Compilation of elements required for a numerical solution of a Sturmn-Luoville problem using chebyshev polynomials.
-# The ODE is in the form:
-#
-# p(x) y''(x) + q(x) y'(x) + r(x) y(x) = f(x)
-#
-# with boundary conditions in the form:
-#
-# c1 y'(a) + c2 y(a) = c3 
-#
-# Based on Boyd 2001, Chapter 6.
-#
+# Various solvers.
 # Benjamin Idini April 2020
 
 import numpy as np
@@ -25,11 +15,23 @@ import pdb
 
 #################################################################################
 class cheby:
+    """ Compilation of elements required for a numerical solution of a Sturmn-Luoville problem using chebyshev polynomials.
+    The ODE is in the form:
+    
+    p(x) y''(x) + q(x) y'(x) + r(x) y(x) = f(x)
+    
+    with boundary conditions in the form:
+    
+    c1 y'(a) + c2 y(a) = c3 
+    
+    Based on Boyd 2001, Chapter 6.
+    """
 
     def __init__(self, npoints=10, loend=0., upend=np.pi, direction=1, extrema=False):
-        # npoints:  number of Chebyshev polynomials
-        # loend:    lower boundary
-        # upend:    upper boundary
+        """ npoints:  number of Chebyshev polynomials
+        loend:    lower boundary
+        upend:    upper boundary
+        """
         
         self.extrema = extrema
         self.N = npoints
@@ -45,6 +47,7 @@ class cheby:
         if extrema:
             self.x = np.cos(np.pi*np.arange(0, npoints)/(npoints-1))[::direction]
         else:
+            # Remove boundaries from the solve vector self.xi. Take care when evaluating boundary quantities (i.e., do not rely on self.xi)
             self.x = np.cos(np.pi*np.arange(1, npoints-1)/(npoints-1))[::direction]
 
         self.xi = (loend+upend)/2 + self.x*(upend-loend)/2    # (loend,upend): Collocation points in the domain of the S-L problem
@@ -60,11 +63,14 @@ class cheby:
     # n:    order of polynomial
     # t:    vector within domain where to evaluate polynomials
     def Tn(self, n,t=np.array(0)):
+
         if t.all() ==0:
             t = self.T
+
         return np.cos(n*t) 
 
     def dTn_x(self, n):
+
         if self.extrema:
         # evalute the derivatives using limits
             t = self.T[1:-1]
@@ -78,6 +84,7 @@ class cheby:
         return pd/self.dxi_dx 
 
     def d2Tn_x2(self, n):
+
         if self.extrema:
             t = self.T[1:-1]
             pd = (-n**2*np.cos(n*t)/np.sin(t)**2 + n*np.cos(t)*np.sin(n*t)/np.sin(t)**3)
@@ -87,25 +94,38 @@ class cheby:
             t = self.T
             pd = (-n**2*np.cos(n*t)/np.sin(t)**2 + n*np.cos(t)*np.sin(n*t)/np.sin(t)**3)
 
-        return pd/self.dxi_dx**2 #multiply or divide
+        return pd/self.dxi_dx**2 
 
     # (Note: Only Tn has an argument where the domain of the chevyshev changes, t. This is required to evaluate the solution at points that are
     # different from the collocation points when evaluating the quality of the result using FD.)
 
-    # Define the boundary condition
+    # Define the analytical boundary conditions:
     # Tn(-1) = (-1)**n ; Tn(1) = 1
     # dTn_x(-1) = n**2 (-1)**(n+1) ; dTn_x(1) = n**2
     def Tn_top(self,n):
         return 1
+
     def Tn_bot(self,n):
         return (-1)**n
+
     def dTndx_top(self,n):
         return n**2 / self.dxi_dx
+
     def dTndx_bot(self,n):
         return (-1)**(n+1) * n**2 / self.dxi_dx
     
-    def lin_solve(self, L, f):
-        return np.linalg.solve( L, f)
+    def lin_solve(self, L, f, sparse=False):
+        """ Solve the problem with a linear solver. L and f should be defined according to the particular equation.
+        """
+        
+        if sparse:
+            sol = sp.sparse.linalg.spsolve(L, f)
+        else:
+            sol = np.linalg.solve( L, f)
+        
+        return sol
+
+    # NOTE: I don't think I need what goes below; too scared to erase for now    
 
     # Obtain a solution by adding the series of Chebyshevs up to N
     def u(self, t):
@@ -184,9 +204,10 @@ class cheby:
 #################################################################################
 
 class bessel:
-    # Use Spherical bessel functions of the first kind as basis functions.
-    # This basis behaves as the function we need: the boundary conditions are satisfied imposing a0 = a1 = 0
-    # Never tested
+    """ Use Spherical bessel functions of the first kind as basis functions.
+    This basis behaves as the function we need: the boundary conditions are satisfied imposing a0 = a1 = 0
+    Never tested
+    """
     def __init__(self, npoints=10, loend=0., upend=np.pi):
         # npoints:  number of functions
         # loend:    lower boundary
@@ -242,8 +263,10 @@ class bessel:
         return self.a 
 
 #################################################################################
+
 class integrator:
-    # A time integrator to solve the radial equation for the potential velocity
+    """A time integrator to solve the radial equation for the potential velocity
+    """
     def __init__(self, npoints=10, loend=0., upend=np.pi):
         self.N = npoints
         self.x0 = loend

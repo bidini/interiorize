@@ -31,8 +31,8 @@ import matplotlib.pyplot as plt
 class dynamical:
     def __init__(self, cheby, om, OM, Mp, ms, a, Rp, 
                 Rc=0, l=[2,4,6], m=2, tau=1e8, b=np.pi, rho=1, rhoc=0,
-                x1=1e-3, x2=3.14, G=6.67e-8, N2=0,
-                 forcing='homogeneous', e=0, tides='c'):
+                x1=1e-3, x2=3.14, G=6.67e-8,
+                e=0, tides='c'):
         """
         The coupled problem of dynamical tides including the non-perturbative Coriolis effect.
 
@@ -42,7 +42,6 @@ class dynamical:
             ms: mass of the companion
             a:  semi-major axis of companion
             Rp: radius of the body
-            N2: Brunt-Vaisala frequency squared to indicate stratification
         """
 
         self.degree = l
@@ -58,8 +57,6 @@ class dynamical:
         self.G = G
         self.rho = rho
         self.rhoc = rhoc
-        self.forcing = forcing
-        self.N2 = N2
         self.e = e
         self.tides = tides
 
@@ -106,9 +103,11 @@ class dynamical:
                 return 0
 
         elif self.tides is 'ee':
-            if (l >= 2) and (l<=6):
-                #return self.gravity_factor*(self.Rp/self.a)**l * 42/4*np.sqrt(2*np.pi/15)*self.e
+            # Derived in notes.
+            if (l >= 2) and (l<=8):
+                # The numerical error is roughly 1e-13. Forcing higher than l=8 falls within the error.
                 return self.gravity_factor*(self.Rp/self.a)**l * self.e *(l + 2*m + 1)*np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
+
             else: 
                 return 0
 
@@ -166,7 +165,6 @@ class dynamical:
             qfunc2.append( (2 - 4*F**2 + 4*F**2*(1 + 2*l)*(-Q(l)**2 + Q(1 + l)**2))/xi )
 
             # term from l+2 (c5)
-            #qfunc2.append( (4*F**2*(3 - 2*l)*Q(1 + l)*Q(2 + l))/xi  ) # typo
             qfunc2.append( (-4*F**2*(5 + 2*l)*Q(1 + l)*Q(2 + l))/xi  )
 
             qfunc.append(qfunc2)
@@ -194,7 +192,6 @@ class dynamical:
             rfunc2.append( (l*(1 + l)*(-1 + 4*F**2*(Q(l)**2 + Q(1 + l)**2)))/xi**2  )
             
             # term from l+2 c(2)
-            #rfunc2.append( -((4*F**2*(11 + l*(4 + l))*Q(1 + l)*Q(2 + l))/xi**2)  ) #typo
             rfunc2.append( -4*F**2*(3 + l*(4 + l))*Q(1 + l)*Q(2 + l)/xi**2  )
 
             rfunc.append(rfunc2)
@@ -202,56 +199,18 @@ class dynamical:
 
         return rfunc
     
-    def f(self, forcing='homogeneous'):
+    def f(self):
         """
         Right-hand side in the Poincare equation.
 
-        type:   'homogeneous' for the homogeneous Poincare problem.
-                'forced' for the salinity-forced problem.
         """
 
-        xi = self.cheby.xi
         phit = []
 
-        if forcing is 'homogeneous':
-            print('Solving the homogeneous Poincare problem')
-            [ phit.append( np.zeros(len(xi)) ) for l in self.degree ]
-
-        elif forcing is 'forced':
-            print('Solving the salinity-forced Poincare problem')
-            # Save the homogeneous flow, previously computed
-            self.flow0 = self.flow
-
-            Q = self.Qlm
-            F = self.OM/self.om2
-            m = self.order
-
-            for i in np.arange(len(self.degree)):
-                l = self.degree[i]
-                disp = self.flow0[i]
-                d_disp = np.gradient(disp, xi)
-
-                c1 = self.N2*(2 - 4*F**2 + 2*F*m - 4*F**2*l*Q(l)**2 + 4*F**2*(1+l)*Q(1+l)**2) / xi 
-                c2 = -self.N2*4*F**2*(2+l)*Q(1+l)*Q(2+l) / xi 
-                c3 = self.N2*4*F**2*(-1+l)*Q(-1+l)*Q(l)/ xi
-                c4 = self.N2*(1 - 4*F**2*(Q(l)**2 + Q(1+l)**2))
-                c5 = -self.N2*4*F**2*Q(1+l)*Q(2+l)
-                c6 = -self.N2*4*F**2*Q(-1+l)*Q(l)
-
-                if l == self.degree[0]: 
-                    rhs = (c1*disp[i] + c2*disp[i+1] + c4*d_disp[i] + c5*d_disp[i+1])
-                elif l == self.degree[-1]:
-                    rhs = (c1*disp[i] + c3*disp[i-1] + c4*d_disp[i] + c6*d_disp[i-1]) 
-                else:
-                    rhs = (c1*disp[i] + c2*disp[i+1] + c3*disp[i-1] + c4*d_disp[i] + c5*d_disp[i+1] + c6*d_disp[i-1]) 
-
-                # consider the renormalization self.Rp/np.pi
-                # The normalization comes from ( 1/r or d/d_r ) = PI/(Rp*x).
-                rhs = rhs*self.Rp/np.pi 
-
-                phit.append( rhs )
+        [ phit.append( np.zeros(len(self.cheby.xi)) ) for l in self.degree ]
 
         phit = np.concatenate(phit)
+
         return phit 
     
     def flowBc(self, surface=True):
@@ -277,26 +236,26 @@ class dynamical:
         qfunc = []
         qfunc2 = []
         for l in self.degree: 
+            
             Q = self.Qlm
+            # b1(l) psi(l) + b2(l) psi(l+2) + b3(l) psi(l-2) + b4(l) psi'(l) + b5(l) psi'(l+2) + b6(l) psi'(l-2)  
 
-            # term from l-2 (c6)
+            # term from l-2 (b6)
             qfunc2.append( -4*F**2*Q(l-1)*Q(l) )
 
-            # term from l (c4)
+            # term from l (b4)
             qfunc2.append( 1 - 4*F**2*(Q(l+1)**2+Q(l)**2) )
 
-            # term from l+2 (c5)
+            # term from l+2 (b5)
             qfunc2.append( -4*F**2*Q(l+2)*Q(l+1) )
 
-            # term from l-2 (c3)
-            rfunc2.append( 4*F**2/x*(l-2)*Q(l-1)*Q(l) )
+            # term from l-2 (b3)
+            rfunc2.append( 4*F**2*(l-2)*Q(l-1)*Q(l)/x )
             
-            # term from l (c1)
-            # fix to dissipation applied
-            rfunc2.append( (-2/x*m*F + 4*F**2/x*(l*Q(l+1)**2-(l+1)*Q(l)**2)) + surface*(4*OM**2-om2**2)*om/om2/self.g*self.Rp/np.pi )
+            # term from l (b1)
+            rfunc2.append( -2*F*(m + 2*F*(l+1)*Q(l)**2 - 2*F*l*Q(l+1)**2 )/x + surface*(4*OM**2-om2**2)*om/om2/self.g*self.Rp/np.pi )
             
-            # term from l+2 (c2)
-            #rfunc2.append( -4*F**2*(l-1)*Q(l+2)*Q(l+1)/x ) # I found a typo here. 
+            # term from l+2 (b2)
             rfunc2.append( 4*F**2*(-l-3)*Q(l+2)*Q(l+1)/x )  
 
             rfunc.append(rfunc2)
@@ -324,6 +283,8 @@ class dynamical:
 
     def centerBc(self):
         """
+        Bottom boundary condition without a core.
+
         Inner boundary condition (r=0): make psi well-behaved near the center without specifying the flow.
         This BC has no radial terms.
         """
@@ -331,42 +292,61 @@ class dynamical:
         nbc = len(self.degree)
         def bcb(i):
             b = []
+            # Potential is regular at the center
             #[b.append( self.cheby.dTndx_bot(n) - self.degree[i]/self.x1*self.cheby.Tn_bot(n) ) for n in self.n]
+
+            #core in hydrostatic equilibrium
+            #[b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
+
             [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
+
             return np.array(b)
 
         cols = []
-        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col is not 0 else np.array([])), bcb(col), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  is not 0 else np.array([]) )  ]) ) for col in range(0,nbc) ]
+        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col is not 0 else np.array([])), bcb(col), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  is not 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
 
         return np.array(cols)
     
     def BigflowBc(self, kind='top'):
         """
+        Boundary condition for the flow (top and bottom).
+
         Build the boundary condition matrix
         """
 
         if kind is 'top':
-            # surface bc
+            # top bc
             flowBc = self.flowBc(surface=True) 
         elif kind is 'bot':
             # bottom bc
             flowBc = self.flowBc(surface=False) 
 
         def block(i,j):
+            # This block evaluates any combination of the bc at a given degree l using a set of three coefficients that include the coupling.
+            #i: position of l in self.degree
+            #j: coupling. j=0:l-2, j=1:l, and j=2:l+2. Or from mathematica coeff: j=0: (b3,b6), j=1: (b1,b4), and j=2: (b2,b5)
+            # b1(l) psi(l) + b2(l) psi(l+2) + b3(l) psi(l-2) + b4(l) psi'(l) + b5(l) psi'(l+2) + b6(l) psi'(l-2)  
+
             B = []
             if kind is 'top':
                 [B.append( flowBc[0][i][j]*self.cheby.dTndx_top(n) + flowBc[1][i][j]*self.cheby.Tn_top(n) ) for n in self.n]
+
             elif kind is 'bot':
                 [B.append( flowBc[0][i][j]*self.cheby.dTndx_bot(n) + flowBc[1][i][j]*self.cheby.Tn_bot(n) ) for n in self.n]
+            
+            # The output should have dimensions (N,)
+            return np.array(B)
 
-            return np.array(B).T
+        block0 = np.zeros((self.N))
 
         nxblocks = len(self.degree)
-        first_row = np.concatenate( [ block(0, 1) , block(0, 2) , np.concatenate([ np.zeros((self.N))] * (nxblocks-2) ) ] )
-        last_row = np.concatenate( [ np.concatenate([ np.zeros((self.N))] * (nxblocks-2) ) , block(nxblocks-1, 0) , block(nxblocks-1, 1) ] )
-        middle_rows = []
-        [ middle_rows.append( np.concatenate([ (np.concatenate([np.zeros((self.N))] * col) if col is not 0 else []), block(col, 0), block(col, 1), block(col, 2), (np.concatenate([np.zeros((self.N))] * (nxblocks-3-col)) if (nxblocks-3-col) is not 0 else [] ) ]) ) for col in range(0, nxblocks-2) ]
+        first_row = np.concatenate( [ block(0, 1), block(0, 2), np.concatenate( [block0]*(nxblocks-2) ) ] )
+        last_row = np.concatenate( [ np.concatenate([block0] * (nxblocks-2) ), block(nxblocks-1, 0), block(nxblocks-1, 1) ] )
 
+        middle_rows = []
+        # Fix 02/08/23: the coupling in the boundary condition was off. For example, it was not including l=2 in the calculation of l=4 bc. 
+        [ middle_rows.append( np.concatenate([ (np.concatenate([block0]*col) if col is not 0 else []), block(col+1, 0), block(col+1, 1), block(col+1, 2), (np.concatenate( [block0]*(nxblocks-3-col) ) if (nxblocks-3-col) is not 0 else [] ) ]) ) for col in range(0, nxblocks-2) ]
+        
         return np.vstack([first_row, middle_rows, last_row])
     
     def get_BigL(self, kind='bvp'):
@@ -377,28 +357,36 @@ class dynamical:
         xi = self.cheby.xi
         nxblocks = len(self.degree)
         PQR = [self.p(), self.q(), self.r()]
+
         def block(i,j):
+            # This block evaluates any combination of the equation at a given degree l using a set of three coefficients that include the coupling.
             #i: position of l in self.degree
-            #j: coupling. j=0:l-2, j=1:l, and j=2:l+2
+            #j: coupling. j=0:l-2, j=1:l, and j=2:l+2. In terms of mathematica coefficients: j=0: (c3,c6,c9), j=1: (c1,c4,c7), and j=2: (c2,c5,c8)
+            # c1(l) psi(l) + c2(l) psi(l+2) + c3(l) psi(l-2) + c4(l) psi'(l) + c5(l) psi'(l+2) + c6(l) psi'(l-2) + c7(l) psi''(l) + c8(l) psi''(l+2) + c9(l) psi''(l-2) 
+
             B = []
             [B.append( PQR[0][i][j]*self.cheby.d2Tn_x2(n) + PQR[1][i][j]*self.cheby.dTn_x(n) + PQR[2][i][j]*self.cheby.Tn(n) ) for n in self.n]
-            return np.array(B).T
 
-        first_col = np.concatenate( [ block(0, 1) , block(1, 0), np.concatenate([np.zeros((len(xi), self.N))] * (nxblocks-2))] )
-        last_col = np.concatenate( [ np.concatenate([np.zeros((len(xi), self.N))] * (nxblocks-2) ), block(nxblocks-2, 2), block(nxblocks-1, 1) ])
+            # The output should have size (len(xi), N).
+            return np.array(B).T
+        
+        block0 = np.zeros((len(xi), self.N))
+        block_empty = np.array([[]]*self.N).T
+        
+        # Concatenate vertically to create the columns of BigL. Each row represents the coupled ODE at a given degree l.
+        first_col = np.concatenate( [ block(0, 1) , block(1, 0), np.concatenate([block0] * (nxblocks-2)) ] )
+        last_col = np.concatenate( [ np.concatenate([block0] * (nxblocks-2) ), block(nxblocks-2, 2), block(nxblocks-1, 1) ] )
 
         middle_cols = []
-        [ middle_cols.append( np.concatenate([ (np.concatenate([np.zeros((len(xi), self.N))] * col) if col is not 0 else np.array([[]]*self.N).T), block(col, 2), block(col+1, 1), block(col+2, 0), (np.concatenate([np.zeros((len(xi), self.N))] * (nxblocks-3-col)) if (nxblocks-3-col) is not 0 else np.array([[]]*self.N).T ) ]) ) for col in range(0, nxblocks-2) ]
-        
+        [ middle_cols.append( np.concatenate([ (np.concatenate([block0] * col) if col is not 0 else block_empty), block(col, 2), block(col+1, 1), block(col+2, 0), (np.concatenate([block0] * (nxblocks-3-col)) if (nxblocks-3-col) is not 0 else block_empty ) ]) ) for col in range(0, nxblocks-2) ]
+       
+        # Concatenate horizontally to assamble the columns of BigL into a matrix
         L = np.concatenate( [first_col, np.concatenate(middle_cols, axis=1), last_col], axis=1 )
        
-        # append boundary conditions at the end of the matrix
-        if kind is 'ivp':
-            # IVP NEEDS UPDATE
-            self.BigL = np.vstack( (L, self.coupledBc(CLO, kind='lower'), self.coupledBc(CUP, kind='lower')) ) 
-
-        elif kind == 'bvp':
+        # Vertically stack the rows containing the boundary conditions at the bottom of BigL
+        if kind == 'bvp':
             # Flow covers the entire body, from center to surface
+            print('Solving core with alternative bottom bc')
             self.BigL = np.vstack( (L, self.centerBc(), self.BigflowBc(kind='top')) )  
 
         elif kind == 'bvp-core':
@@ -411,20 +399,21 @@ class dynamical:
         """
 
         m = self.order
-        if kind is 'ivp':
-            # IVP NEEDS UPDATE 
-            return
+
+        om_Q = self.om/self.om2
+
+        norm = self.Rp/np.pi
         
-        elif kind == 'bvp' or kind == 'bvp-core':
-            # NOTE: both the evanescent central region (core) and central regularity have fbc=0.
-            FBCtop = [] 
-            for l in self.degree: 
-                # add the forcing (right-hand side) in the outer boundary condition (dp=0)
-                # Added a fix to dissipation.
-                FBCtop.append( self.Ulm(l,m)*(1 + self.k_hydro(l))*(4*self.OM**2-self.om2**2)*self.om/self.om2/self.g*self.Rp/np.pi )
-            
-            # Concatenate the forcing and right-hand side of inner and outer boundary conditions.
-            self.Bigf = np.concatenate( (self.f(forcing=self.forcing), np.zeros(len(self.degree)), FBCtop ) )
+        # NOTE: both the evanescent central region (core) and central regularity have fbc=0.
+        FBCtop = [] 
+        for l in self.degree: 
+            # add the forcing (right-hand side) in the outer boundary condition (dp=0)
+            # Added a fix to dissipation.
+
+            FBCtop.append( (1 + self.k_hydro(l))*self.Ulm(l,m)*om_Q/self.g*norm*(4*self.OM**2 - self.om2**2) )
+        
+        # Concatenate the forcing and right-hand side of inner and outer boundary conditions.
+        self.Bigf = np.concatenate( (self.f(), np.zeros(len(self.degree)), FBCtop ) )
 
     # End building matrices
     ## ----------------------------------------------------------------------------
@@ -454,9 +443,6 @@ class dynamical:
         Solve for the love number 
         """
         m = self.order
-        self.dk = []
-        self.k = []
-        self.Q = []
 
         for i in range(0,len(self.degree)):
             l = self.degree[i]
@@ -464,13 +450,13 @@ class dynamical:
             # gravity is obtained only at the surface
             indSurface = np.argmax(self.cheby.xi)
             
+            # Analytical derivation of dk. Check notes.
             dk = self.psi[i][indSurface]/(self.k_hydro(l)*self.Ulm(l,m))*(1 - self.g*(2*l+1)/(4*np.pi*self.G*self.rho*self.Rp))**(-1)*100
 
             k = self.k_hydro(l)*(1+dk/100)
 
             self.dk.append(dk)
             self.k.append(k)
-
             self.Q.append( abs(np.absolute(k)/np.imag(k)) )
 
             """
@@ -484,6 +470,7 @@ class dynamical:
 
     # Build the radial displacement 
     def get_flow(self):
+
         psi = self.psi
         dpsi = self.dpsi
         d2psi = self.d2psi
@@ -501,21 +488,24 @@ class dynamical:
             r = self.cheby.xi
             
             # From a Mathematica template. Check attached file 'SH_projection.nb'
-            c1 = -2*F*m + 4*F**2*((-1-l)*Q(l)**2+l*Q(1+l)**2) 
-            c2 = 4*F**2*(-3-l)*Q(1+l)*Q(2+l) 
-            c3 = 4*F**2*(-2+l)*Q(-1+l)*Q(l) 
-            c4 = 1 - 4*F**2*(Q(l)**2+Q(1+l)**2) 
-            c5 = -4*F**2*Q(1+l)*Q(2+l)
-            c6 = -4*F**2*Q(-1+l)*Q(l)
+            # b1(l) psi(l) + b2(l) psi(l+2) + b3(l) psi(l-2) + b4(l) psi'(l) + b5(l) psi'(l+2) + b6(l) psi'(l-2)  
+            b1 = -2*F*(m + 2*F*(l+1)*Q(l)**2 - 2*F*l*Q(1+l)**2) 
+            b2 = 4*F**2*(-3-l)*Q(1+l)*Q(2+l) 
+            b3 = 4*F**2*(-2+l)*Q(-1+l)*Q(l) 
+            b4 = 1 - 4*F**2*(Q(l)**2+Q(1+l)**2) 
+            b5 = -4*F**2*Q(1+l)*Q(2+l)
+            b6 = -4*F**2*Q(-1+l)*Q(l)
             
             # total tidal flow in the inner region, including hydrostatic
             # fix to dissipation applied.
             if l == self.degree[0]: 
-                d = (c1*psi[i]/r + c2*psi[i+1]/r + c4*dpsi[i] + c5*dpsi[i+1])/(4*OM**2-om2**2)*om2/om 
+                d = (b1*psi[i]/r + b2*psi[i+1]/r + b4*dpsi[i] + b5*dpsi[i+1])/(4*OM**2-om2**2)*om2/om 
+
             elif l == self.degree[-1]:
-                d = (c1*psi[i]/r + c3*psi[i-1]/r + c4*dpsi[i] + c6*dpsi[i-1])/(4*OM**2-om2**2)*om2/om 
+                d = (b1*psi[i]/r + b3*psi[i-1]/r + b4*dpsi[i] + b6*dpsi[i-1])/(4*OM**2-om2**2)*om2/om 
+
             else:
-                d = (c1*psi[i]/r + c2*psi[i+1]/r + c3*psi[i-1]/r + c4*dpsi[i] + c5*dpsi[i+1] + c6*dpsi[i-1])/(4*OM**2-om2**2)*om2/om 
+                d = (b1*psi[i]/r + b2*psi[i+1]/r + b3*psi[i-1]/r + b4*dpsi[i] + b5*dpsi[i+1] + b6*dpsi[i-1])/(4*OM**2-om2**2)*om2/om 
            
             # denormalize by radius
             d = d/self.Rp*np.pi
@@ -528,11 +518,9 @@ class dynamical:
                 # surface
                 r = self.cheby.xi[indSurface]
 
-                # dynamical part of the tidal displacement. NOTE: I need the full part
                 d2 = self.psi[i][indSurface]*( 4*np.pi*self.G*self.rho*self.Rp/(2*l+1) - self.g)**(-1)
                 '''
                 sanity check with surface gravity:
-
                 '''
  
                 # inner boundary

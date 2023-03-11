@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 
 class dynamical:
     def __init__(self, cheby, om, OM, Mp, ms, a, Rp, 
-                Rc=0, l=[2,4,6], m=2, tau=1e8, b=np.pi, rho=1, rhoc=0,
+                Rc=0, l=[2,3,4], m=2, tau=1e8, b=np.pi, rho=1, rhoc=0,
                 x1=1e-3, x2=3.14, G=6.67e-8,
-                e=0, tides='c'):
+                e=0, tides='c', N2=0):
         """
         The coupled problem of dynamical tides including the non-perturbative Coriolis effect.
 
@@ -45,6 +45,7 @@ class dynamical:
         self.rho = rho
         self.rhoc = rhoc
         self.e = e
+        self.N2 = N2
         self.tides = tides
 
         # gravity at the surface of an ocean with a rigid core
@@ -125,57 +126,59 @@ class dynamical:
         m = self.order
         om = self.om
         om2 = self.om2
-        Om = self.Om
+        OM = self.OM
         N2 = self.N2
 
-        q = m/l/(l+1)*x
-        r = (om*om2 - N2)/(2*om*Om) + 2*m/l/(l+1)
+        q = m/l/(l+1)*x*OM
+        r = (om*om2 - N2)/(2*om) + 2*m*OM/l/(l+1)
 
         return [0,0,0], [0,q,r], [0,0,0]
 
     def eqn1_y3(self, l):
         m = self.order
         q = self.Qlm
-        return [0,0,1j*q(l)*(l-1)], [0,0,0], [0,0,-1j*q(l+1)*(l+2)]
+        return [0,0,1j*q(l)*(l-1)*self.OM], [0,0,0], [0,0,-1j*q(l+1)*(l+2)*self.OM]
 
     def eqn1_psi(self, l):
         k = np.pi/self.Rp # x = kr
-        return [0,0,0], [0,k/2/self.om/self.Om,0], [0,0,0]
+        return [0,0,0], [0,k/2/self.om,0], [0,0,0]
 
     def eqn2_y1(self, l):
         q = self.Qlm
         x = self.cheby.xi
+        OM = self.OM
 
-        q0 = q(l)/l**2*x 
-        r0 = -q(l)/l**2*(l-2)
-        q2 = q(l+1)/(l+1)**2*x
-        r2 = q(l+1)/(l+1)**2*(l+3)
+        q0 = q(l)/l**2*x*OM 
+        r0 = -q(l)/l**2*(l-2)*OM
+        q2 = q(l+1)/(l+1)**2*x*OM
+        r2 = q(l+1)/(l+1)**2*(l+3)*OM
         return [0,q0,r0], [0,0,0], [0,q2,r2]
     
     def eqn2_y3(self, l):
-        return [0,0,0], [0,0,1j*(self.order/l/(l+1) - self.om2/2/self.Om)], [0,0,0]
+        return [0,0,0], [0,0,1j*(self.order*self.OM/l/(l+1) - self.om2/2)], [0,0,0]
 
     def eqn3_y1(self, l):
         x = self.cheby.xi
         m = self.order
         om = self.om
         om2 = self.om2
-        Om = self.Om
+        OM = self.OM
         N2 = self.N2
 
-        p = 1j*(om2/2/Om - m/l/(l+1))/l/(l+1)*x**2
-        q = 1j*(om2/2/Om - m/l/(l+1))/l/(l+1)*4*x 
-        r = 1j*N2/2/Om/om + 1j*(om2/2/Om - m/l/(l+1))*(2/l/(l+1)-1)
+        p = 1j*(om2/2 - m*OM/l/(l+1))/l/(l+1)*x**2
+        q = 1j*(om2/2 - m*OM/l/(l+1))/l/(l+1)*4*x 
+        r = 1j*N2/2/om + 1j*(om2/2 - m*OM/l/(l+1))*(2/l/(l+1)-1)
         return [0,0,0], [p,q,r], [0,0,0]
     
     def eqn3_y3(self, l):
         q = self.Qlm
         x = self.cheby.xi
+        OM = self.OM
 
-        q0 = q(l)*(l-1)/l*x
-        r0 = -q(l)*(l-1)**2/l
-        q2 = q(l+1)*(l+2)/(l+1)*x
-        r2 = q(l+1)*(l+2)**2/(l+1)
+        q0 = q(l)*(l-1)/l*x*OM
+        r0 = -q(l)*(l-1)**2/l*OM
+        q2 = q(l+1)*(l+2)/(l+1)*x*OM
+        r2 = q(l+1)*(l+2)**2/(l+1)*OM
         return [0,q0,r0], [0,0,0], [0,q2,r2]
 
     def eqn_zeros(self, l):
@@ -193,7 +196,7 @@ class dynamical:
 
         phit = np.concatenate(phit)
 
-        return np.array([phit]*3) 
+        return np.concatenate([phit]*3) 
     
     def Qlm(self,l):
         """ 
@@ -214,34 +217,6 @@ class dynamical:
     # The method is based on calculating coefficients that multiple analytical expressions for the 
     # derivatives of Chebyshev polynomials.
 
-    def get_bc_block(self, bc='bot'):
-        """
-        Bottom boundary condition with a rigid core (no-slip).
-        bc = {'bot', 'top'}
-
-        """
-        nbc = len(self.degree)
-        def bcb(i):
-            b = []
-            if bc is 'bot':
-                [b.append( self.cheby.Tn_bot(n) ) for n in self.n]
-
-            elif bc is 'top':
-                [b.append( self.cheby.Tn_top(n) ) for n in self.n]
-                
-            elif bc is 'zero':
-                [b.append( 0 ) for n in self.n]
-
-
-            return np.array(b)
-
-        cols = []
-        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col is not 0 else np.array([])), bcb(col), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  is not 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
-
-        return np.array(cols)
-    
-
-
     def get_eqn_block(self, eqn, kind='bvp'):
         """
         Build a block for a given equation and variable, sub element in left-hand side matrix
@@ -250,11 +225,10 @@ class dynamical:
         xi = self.cheby.xi
         nxblocks = len(self.degree)
         block0 = np.zeros((len(xi), self.N))
-        block_empty = np.array([[]]*self.N).T
+        block_empty = np.array([[]]*len(xi))
 
         def block(pqr):
             # This block evaluates any combination of the equation at a given degree l using a set of three coefficients that include the coupling.
-            
             B = []
             [B.append( pqr[0]*self.cheby.d2Tn_x2(n) + pqr[1]*self.cheby.dTn_x(n) + pqr[2]*self.cheby.Tn(n) ) for n in self.n]
 
@@ -262,38 +236,76 @@ class dynamical:
             return np.array(B).T
 
         # Concatenate horizontally to create the columns of BigL. Each row represents the coupled ODE at a given degree l.
+        # The list eqn(l) has l-1 coupling on index 0, and l+1 coupling on index 2.
         PQR0 = eqn(2)
         PQRend = eqn(self.degree[-1])
-        first_row = np.concatenate( [ block(PQR0[1]) , block(PQR0[2]), np.concatenate([block0] * (nxblocks-2)) ], axis=1 )
-        last_row = np.concatenate( [ np.concatenate([block0] * (nxblocks-2) ), block(PQRend[0]), block(PQRend[1]) ], axis=1 )
+        first_row = np.concatenate( [ block(PQR0[1]) , block(PQR0[2]), np.concatenate([block0] * (nxblocks-2), axis=1) ], axis=1 )
+        last_row = np.concatenate( [ np.concatenate([block0] * (nxblocks-2), axis=1 ), block(PQRend[0]), block(PQRend[1]) ], axis=1 )
  
         middle_rows = []
         for row in range(0, len(self.degree)-2):
             PQR = eqn(row+3)
-            middle_rows.append( np.concatenate([ (np.concatenate([block0] * row) if row is not 0 else block_empty), block(PQR[0]), block(PQR[1]), block(PQR[2]), (np.concatenate([block0] * (nxblocks-3-row)) if (nxblocks-3-row) is not 0 else block_empty ) ]) ) 
+            middle_rows.append( np.concatenate([ (np.concatenate([block0] * row, axis=1) if row is not 0 else block_empty), block(PQR[0]), block(PQR[1]), block(PQR[2]), (np.concatenate([block0] * (nxblocks-3-row), axis=1) if (nxblocks-3-row) is not 0 else block_empty ) ], axis=1 ) ) 
 
         # Concatenate vertically to assamble the columns of BigL into a matrix
         L = np.concatenate( [first_row, np.concatenate(middle_rows, axis=0), last_row], axis=0 )
-
+        
         return L
 
-    def get_BigL(self):
+    def get_BigL(self, kind='bvp-core'):
         """
         ensamble the left-hand side matrix of the problem. 
         """
         block = self.get_eqn_block
         
+        block(self.eqn1_y3)
         # Concatenate equation blocks for each equation and variable.
         row1 = np.concatenate([block(self.eqn1_y1), block(self.eqn1_y3), block(self.eqn1_psi)], axis=1) 
         row2 = np.concatenate([block(self.eqn2_y1), block(self.eqn2_y3), block(self.eqn_zeros)], axis=1)
         row3 = np.concatenate([block(self.eqn3_y1), block(self.eqn3_y3), block(self.eqn_zeros)], axis=1)
         BigL = np.concatenate( [row1, row2, row3 ])
-
-        self.add_bc(BigL)
-
+        
+        self.add_bc(BigL, kind=kind)
 
         return 
     
+    def get_bc_block(self, bc='bot'):
+        """
+        Bottom boundary condition with a rigid core (no-slip).
+        bc = {'bot', 'top'}
+        """
+        nbc = len(self.degree)
+        def bcb(l):
+            b = []
+            if bc is 'bot':
+                [b.append( self.cheby.Tn_bot(n) ) for n in self.n]
+
+            elif bc is 'top':
+                [b.append( self.cheby.Tn_top(n) ) for n in self.n]
+            
+            elif bc is 'bot_dx':
+                [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
+
+            elif bc is 'top_dx':
+                [b.append( self.cheby.dTndx_top(n) ) for n in self.n]
+
+            elif bc is 'top_sf':
+                """
+                Stress free bc at the top
+                """
+                [b.append( self.cheby.dTndx_top(n)/self.x2 - self.cheby.Tn_top(n)/self.x2**2 ) for n in self.n]
+
+            elif bc is 'zero':
+                [b.append( 0 ) for n in self.n]
+
+            # output is a numpy array of lenght N
+            return np.array(b)
+
+        cols = []
+        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col is not 0 else np.array([])), bcb(col+2), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  is not 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
+
+        return np.array(cols)
+
     def add_bc(self, L, kind='bvp-core'):
         """
         Add the boundary conditions to the big matrix.
@@ -307,13 +319,16 @@ class dynamical:
 
         elif kind == 'bvp-core':
             # Flow is restricted to a shell (i.e., global ocean)
-           
-            row1 = np.concatenate( [self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero')], axis=1)
-            row2 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero')], axis=1)
-            row3 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot')], axis=1)
-            row4 = np.concatenate( [self.get_bc_block(bc='top'), self.get_bc_block(bc='top')/self.g, self.get_bc_block(bc='zero')], axis=1)
+            
+            row1 = np.concatenate( [self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero')], axis=1) # y1 = 0 at ocean bottom
+            row2 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero')], axis=1) # y3 = 0 at ocean bottom
+            row3 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot')], axis=1) # psi  at ocean bottom
+            row4 = np.concatenate( [self.get_bc_block(bc='top'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='top')/self.g], axis=1) # y1 at surface
+            row5 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='top'), self.get_bc_block(bc='zero')], axis=1) # y3 at surface
+            row6 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot_dx')], axis=1) # dpsi at ocean bottom
 
-            self.BigL = np.vstack( (L, row1, row2, row3, row4) )  
+
+            self.BigL = np.concatenate( [L, row1, row2, row3, row5, row6, row4], axis=0 )  
 
         return
     
@@ -335,7 +350,7 @@ class dynamical:
             FBCtop.append( (1 + self.k_hydro(l))*self.Ulm(l,m)/self.g )
         
         # Concatenate the forcing and right-hand side of inner and outer boundary conditions.
-        self.Bigf = np.concatenate( (self.f(), np.zeros(3*len(self.degree)), FBCtop ) )
+        self.Bigf = np.concatenate( (self.f(), np.zeros(5*len(self.degree)), FBCtop ) )
 
     # End building matrices
     ## ----------------------------------------------------------------------------
@@ -353,9 +368,9 @@ class dynamical:
 
         ans = np.split(self.an, 3)
 
-        self.psi, self.dpsi, self.d2psi = self.u(ans[2])
         self.y1, self.dy1, self.d2y1 = self.u(ans[0])
         self.y3 = self.u(ans[1])[0]
+        self.psi, self.dpsi, self.d2psi = self.u(ans[2])
 
         self.get_y2()
         
@@ -366,6 +381,8 @@ class dynamical:
     def load(self, an, kind='bvp'):
         """
         Load a saved coefficients structure
+
+        It needs update
         """
 
         self.get_Bigf(kind)
@@ -400,9 +417,9 @@ class dynamical:
            
             # Gravity from the surface displacement
             phi = 4*np.pi*self.G*self.rho*self.Rp/(2*l+1)*self.y1[i][indSurface]
-
+            
             # Gravity from the interior displacement.
-            rhop = self.rho*self.y1*self.N2/self.g
+            #rhop = self.rho*self.y1*self.N2/self.g
             # TBD. Include the solution to Poisson's equation
 
             k = phi/self.Ulm(l,m) 
@@ -431,8 +448,9 @@ class dynamical:
         x = self.cheby.xi
         y2 = []
 
-        for l in self.degree:
-            y2.append( (x**2*self.dy1+ 2*x*self.y1)/l/(l+1)/x )
+        for i in range(0,len(self.degree)):
+            l = self.degree[i]
+            y2.append( (x**2*self.dy1[i]+ 2*x*self.y1[i])/l/(l+1)/x )
 
         self.y2 = y2
 

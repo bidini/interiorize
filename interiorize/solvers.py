@@ -165,9 +165,9 @@ class cheby:
         xi = self.xi
         L = []
         [L.append( p(xi)*self.d2Tn_x2(n) + q(xi)*self.dTn_x(n) + r(xi)*self.Tn(n,self.T) ) for n in np.arange(0,self.N)]
-        if kind is 'bvp':
+        if kind == 'bvp':
             return np.vstack( (np.array(L).T, self.bc(clo,kind='lower'), self.bc(cup,kind='upper')) ) # add the boundary conditions 
-        elif kind is 'ivp':
+        elif kind == 'ivp':
             return np.vstack( (np.array(L).T, self.bc(clo,kind='lower'), self.bc(cup,kind='lower')) ) # add the boundary conditions 
     
     def updatedL(self, P, Q, R, CLO, CUP, kind='bvp', BC=None):
@@ -191,13 +191,13 @@ class cheby:
         last_col = np.concatenate( [ np.concatenate([np.zeros((len(xi),self.N))] * (nxblocks-2) ), block(nxblocks-2,2), block(nxblocks-1,1) ])
 
         middle_cols = []
-        [ middle_cols.append( np.concatenate([ (np.concatenate([np.zeros((len(xi),self.N))] * col) if col is not 0 else np.array([[]]*self.N).T), block(col,2), block(col+1,1), block(col+2,0), (np.concatenate([np.zeros((len(xi),self.N))] * (nxblocks-3-col)) if (nxblocks-3-col) is not 0 else np.array([[]]*self.N).T ) ]) ) for col in range(0,nxblocks-2) ]
+        [ middle_cols.append( np.concatenate([ (np.concatenate([np.zeros((len(xi),self.N))] * col) if col != 0 else np.array([[]]*self.N).T), block(col,2), block(col+1,1), block(col+2,0), (np.concatenate([np.zeros((len(xi),self.N))] * (nxblocks-3-col)) if (nxblocks-3-col) != 0 else np.array([[]]*self.N).T ) ]) ) for col in range(0,nxblocks-2) ]
         
         L = np.concatenate( [first_col,np.concatenate(middle_cols,axis=1),last_col],axis=1 )
         
-        if kind is 'bvp':
+        if kind == 'bvp':
             return np.vstack( (L, self.coupledBc(CLO,kind='lower'), self.coupledBc(CUP,kind='upper')) ) # add the boundary conditions 
-        elif kind is 'ivp':
+        elif kind == 'ivp':
             return np.vstack( (L, self.coupledBc(CLO,kind='lower'), self.coupledBc(CUP,kind='lower')) ) # add the boundary conditions 
         elif kind == 'bvp-coupled':
             return np.vstack( (L, self.coupledBc(CLO,kind='lower'), self.mechBc(BC)) ) # add the boundary conditions 
@@ -234,18 +234,18 @@ class bessel:
         xi = self.xi
         L = []
         [L.append( p(xi)*self.d2jn(n,xi) + q(xi)*self.djn(n,xi) + r(xi)*jn(n,xi) ) for n in np.arange(1,self.N)]
-        if kind is 'bvp':
+        if kind == 'bvp':
             return np.vstack( (np.array(L).T, self.bc(clo,kind='lower'), self.bc(cup,kind='upper')) ) # add the boundary conditions 
-        elif kind is 'ivp':
+        elif kind == 'ivp':
             return np.vstack( (np.array(L).T, self.bc(clo,kind='lower'), self.bc(cup,kind='lower')) ) # add the boundary conditions 
         else:
             return np.vstack( (np.array(L).T, self.bc(clo,kind='lower')) )
     
     def bc(self, c, kind='lower'):
         bc = []
-        if kind is 'lower':
+        if kind == 'lower':
             [bc.append(  c[1]*jn(n,self.x0) + c[0]*self.djn(n,self.x0) ) for n in np.arange(1,self.N)]
-        elif kind is 'upper':
+        elif kind == 'upper':
             [bc.append( c[1]*jn(n,self.x1) + c[0]*self.djn(n,self.x1) ) for n in np.arange(1,self.N)]
         return bc
     

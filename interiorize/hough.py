@@ -154,7 +154,7 @@ class dynamical:
             'o': obliquity tides.
         """
         
-        if self.tides is 'c':
+        if self.tides == 'c':
             if l >= 2:
 
                 return self.gravity_factor*(self.Rp/self.a)**l *np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
@@ -163,7 +163,7 @@ class dynamical:
 
                 return 0
 
-        elif self.tides is 'ee':
+        elif self.tides == 'ee':
             # Derived in notes.
             if (l >= 2) and (l<=8):
                 # The numerical error is roughly 1e-13. Forcing higher than l=8 falls within the error.
@@ -173,7 +173,7 @@ class dynamical:
 
                 return 0
 
-        elif self.tides is 'o':
+        elif self.tides == 'o':
 
             return
     
@@ -307,7 +307,7 @@ class dynamical:
         middle_rows = []
         for row in range(0, len(self.degree)-2):
             PQR = eqn(row+3)
-            middle_rows.append( np.concatenate([ (np.concatenate([block0] * row, axis=1) if row is not 0 else block_empty), block(PQR[0]), block(PQR[1]), block(PQR[2]), (np.concatenate([block0] * (nxblocks-3-row), axis=1) if (nxblocks-3-row) is not 0 else block_empty ) ], axis=1 ) ) 
+            middle_rows.append( np.concatenate([ (np.concatenate([block0] * row, axis=1) if row != 0 else block_empty), block(PQR[0]), block(PQR[1]), block(PQR[2]), (np.concatenate([block0] * (nxblocks-3-row), axis=1) if (nxblocks-3-row) != 0 else block_empty ) ], axis=1 ) ) 
 
         # Concatenate vertically to assamble the columns of BigL into a matrix
         L = np.concatenate( [first_row, np.concatenate(middle_rows, axis=0), last_row], axis=0 )
@@ -339,56 +339,56 @@ class dynamical:
         nbc = len(self.degree)
         def bcb(l, spec=None):
             b = []
-            if bc is 'bot':
+            if bc == 'bot':
                 [b.append( self.cheby.Tn_bot(n) ) for n in self.n]
 
-            elif bc is 'top':
+            elif bc == 'top':
                 [b.append( self.cheby.Tn_top(n) ) for n in self.n]
             
-            elif bc is 'top_dp':
+            elif bc == 'top_dp':
                 [b.append( self.cheby.Tn_top(n)*(self.g - 4*np.pi*self.G*self.rho*self.Rp/(2*l+1)) ) for n in self.n]
             
-            elif bc is 'bot_dx':
+            elif bc == 'bot_dx':
                 [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
 
-            elif bc is 'top_dx':
+            elif bc == 'top_dx':
                 [b.append( self.cheby.dTndx_top(n) ) for n in self.n]
 
-            elif bc is 'top_sf':
+            elif bc == 'top_sf':
                 """
                 Stress free bc at the top
                 """
                 [b.append( self.cheby.dTndx_top(n)/self.x2 - self.cheby.Tn_top(n)/self.x2**2 ) for n in self.n]
             
-            elif bc is 'bot_sf':
+            elif bc == 'bot_sf':
                 """
                 Stress free bc at the bot
                 """
                 [b.append( self.cheby.dTndx_bot(n)/self.x1 - self.cheby.Tn_bot(n)/self.x1**2 ) for n in self.n]
 
-            elif bc is 'zero':
+            elif bc == 'zero':
                 [b.append( 0 ) for n in self.n]
 
-            elif spec is 'y3_minus':
+            elif spec == 'y3_minus':
                 [b.append( (l-1)/l*self.Qlm(l)*self.cheby.dTndx_bot(n) ) for n in self.n]
 
-            elif spec is 'y3_plus':
+            elif spec == 'y3_plus':
                 [b.append( (l+2)/(l+1)*self.Qlm(l+1)*self.cheby.dTndx_bot(n) ) for n in self.n]
 
-            elif bc is 'y_1':
+            elif bc == 'y_1':
                 [b.append( (1j*self.om2/2/self.OM - 1j*self.order/l/(l+1))*self.cheby.d2Tndx2_bot(n)*self.x1/l/(l+1) ) for n in self.n]
 
 
             # output is a numpy array of lenght N
             return np.array(b)
         
-        if bc is 'special':
+        if bc == 'special':
             
             first_col = np.concatenate([ np.zeros(self.N), bcb(2, spec='y3_plus'), np.concatenate([np.zeros(self.N)]*(nbc-2))   ]) 
             last_col = np.concatenate([ np.concatenate([np.zeros(self.N)]*(nbc-2)), bcb(nbc+2, spec='y3_minus') ,np.zeros(self.N)   ]) 
  
             cols = []
-            [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*(col-1)) if col-1 is not 0 else np.array([])), bcb(col+2, 'y3_minus'), np.zeros(self.N), bcb(col+2, 'y3_plus') , (np.concatenate([np.zeros(self.N)]*(nbc-2-col)) if (nbc-2-col)  is not 0 else np.array([]) )  ]) ) for col in range(1, nbc-1) ]
+            [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*(col-1)) if col-1 != 0 else np.array([])), bcb(col+2, 'y3_minus'), np.zeros(self.N), bcb(col+2, 'y3_plus') , (np.concatenate([np.zeros(self.N)]*(nbc-2-col)) if (nbc-2-col)  != 0 else np.array([]) )  ]) ) for col in range(1, nbc-1) ]
             
             cols.append(last_col)
             cols.insert(0, first_col)
@@ -396,7 +396,7 @@ class dynamical:
             return np.array(cols)
 
         cols = []
-        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col is not 0 else np.array([])), bcb(col+2), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  is not 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
+        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col != 0 else np.array([])), bcb(col+2), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  != 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
 
         return np.array(cols)
 

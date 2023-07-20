@@ -102,6 +102,8 @@ start_time = time.time()
 for ind in range(H_lower_bound, H_upper_bound):
 
     k2_vec[ind], E_vec[ind] = main_calc() 
+    
+    print("Calculation at H = {} km done.".format(int(H_vec[ind]/1e5)))
 
 
 if rank == 0:

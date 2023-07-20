@@ -113,6 +113,9 @@ class cheby:
 
     def dTndx_bot(self,n):
         return (-1)**(n+1) * n**2 / self.dxi_dx
+
+    def d2Tndx2_bot(self,n):
+        return ( -1/3*n**2*(-1)**n + 1/3*n**4*(-1)**n ) / self.dxi_dx**2
     
     def lin_solve(self, L, f, sparse=False):
         """ Solve the problem with a linear solver. L and f should be defined according to the particular equation.

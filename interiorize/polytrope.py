@@ -26,7 +26,7 @@ class static:
 
 class norotation:
     # This is the flow potential without Coriolis. Vorontsov's dynamical tide.
-    def __init__(self, cheby,om, Mp, ms,a, Rp, l=2, m=2,b=np.pi,A=4.38,B=0,x0=1e-3,xr=3.14,G=6.67e-8):
+    def __init__(self, cheby,om, Mp, ms,a, Rp, l=2, m=2,b=np.pi,A=4.38,B=0,x0=1e-3,xr=3.14,G=6.67e-8,tides='c'):
         self.degree = l
         self.order = m
         self.om = om
@@ -40,6 +40,7 @@ class norotation:
         self.B = 0
         self.rhoc = A
         self.g = G*Mp/Rp**2
+        self.tides = tides
 
         self.cheby = cheby
         self.n = np.arange(0,cheby.N)
@@ -68,10 +69,27 @@ class norotation:
         #return -(self.A-self.OM/2/np.pi/self.G)*jn(1,xi) + self.OM**2/2/np.pi/self.G*jn(1,xi) 
 
     def Ulm(self, l,m):
-        if l >= 2:
-            return self.gravity_factor*(self.Rp/self.a)**l *np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
-        else:
-            return 0
+        """
+        Numerical factor in the tidal forcing.
+
+        kind:
+            'c': conventional tides.
+            'e': eccentricity tides.
+            'o': obliquity tides.
+        """
+        
+        if self.tides is 'c':
+            if l >= 2:
+                return self.gravity_factor*(self.Rp/self.a)**l *np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
+            else:
+                return 0
+
+        elif self.tides is 'ee':
+            if l >= 2:
+                #return self.gravity_factor*(self.Rp/self.a)**l * 42/4*np.sqrt(2*np.pi/15)*self.e
+                return self.gravity_factor*(self.Rp/self.a)**l * self.e *(l + 2*m + 1)*np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
+            else: 
+                return 0
         
     def f(self):
         l = self.degree
@@ -203,7 +221,10 @@ class gravity:
 
 class dynamical:
     # The coupled problem of dynamical tides including the non-perturbative Coriolis effect.
-    def __init__(self, cheby,om, OM, Mp, ms,a, Rp, l=[2,4,6], m=2,tau=1e8,b=np.pi,A=4.38,B=0,x0=1e-3,xr=3.14,G=6.67e-8):
+    def __init__(self, cheby,om, OM, Mp, ms,a, Rp, 
+                 l=[2,4,6], m=2,tau=1e8,b=np.pi,
+                 A=4.38,B=0,x0=1e-3,xr=3.14,G=6.67e-8,
+                 tides='c', e=0):
         self.degree = l
         self.order = m
         self.OM = OM
@@ -220,6 +241,8 @@ class dynamical:
         self.B = 0
         self.rhoc = A
         self.g = G*Mp/Rp**2
+        self.tides = tides
+        self.e = e
 
         self.cheby = cheby
         self.n = np.arange(0,cheby.N)
@@ -234,6 +257,7 @@ class dynamical:
         self.phi_dyn = []
         self.dk = []
         self.k = []
+        self.k_hs = []
         self.Q = []
     
     def rho(self):
@@ -248,10 +272,27 @@ class dynamical:
 
 
     def Ulm(self, l,m):
-        if l >= 2:
-            return self.gravity_factor*(self.Rp/self.a)**l *np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
-        else:
-            return 0
+        """
+        Numerical factor in the tidal forcing.
+
+        kind:
+            'c': conventional tides.
+            'e': eccentricity tides.
+            'o': obliquity tides.
+        """
+        
+        if self.tides is 'c':
+            if l >= 2:
+                return self.gravity_factor*(self.Rp/self.a)**l *np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
+            else:
+                return 0
+
+        elif self.tides is 'ee':
+            if l >= 2:
+                #return self.gravity_factor*(self.Rp/self.a)**l * 42/4*np.sqrt(2*np.pi/15)*self.e
+                return self.gravity_factor*(self.Rp/self.a)**l * self.e *(l + 2*m + 1)*np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
+            else: 
+                return 0
 
     def f(self):
         xi = self.cheby.xi
@@ -455,6 +496,7 @@ class dynamical:
         return np.array(cols)
 
     def BigflowBc(self, kind='top'):
+        # This needs a thorough check. I found a bug in the block indecis describing the coupling amout tides.
         if kind is 'top':
             flowBc = self.flowBc(surface=True) 
         elif kind is 'bot':
@@ -543,6 +585,7 @@ class dynamical:
             dk = (k)/k_hs*100 # for the dynamical potential
             self.dk.append(dk)
             self.k.append(k)
+            self.k_hs.append(k_hs)
             self.Q.append( abs(np.absolute(k)/np.imag(k)) )
 
         return 

@@ -53,7 +53,10 @@ class dynamical:
         self.Rp = Rp
         self.Rc = Rc
         self.tau = tau
-        self.om2 = om + 1j/tau
+        if tau==0:
+            self.om2 = self.om
+        else:
+            self.om2 = om - 1j/tau
         self.G = G
         self.rho = rho
         self.rhoc = rhoc
@@ -72,6 +75,7 @@ class dynamical:
         self.psi = []
         self.dpsi = []
         self.d2psi = []
+        self.phi = []
         self.flow = []
         self.flow_sum = []
         self.phi = []
@@ -84,6 +88,7 @@ class dynamical:
         """
         The hydrostatic Love number in a differentiated body with an ocean and a perfectly rigid core (from my notes).
         """
+
         return 3/(2*(l-1) + (2*l+1)*(self.rhoc/self.rho-1)*(self.Rc/self.Rp)**3) 
     
     def Ulm(self, l, m):
@@ -98,8 +103,11 @@ class dynamical:
         
         if self.tides is 'c':
             if l >= 2:
+
                 return self.gravity_factor*(self.Rp/self.a)**l *np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
+
             else:
+
                 return 0
 
         elif self.tides is 'ee':
@@ -109,10 +117,11 @@ class dynamical:
                 return self.gravity_factor*(self.Rp/self.a)**l * self.e *(l + 2*m + 1)*np.sqrt(4*np.pi*factorial(l-m)/(2*l+1)/factorial(l+m))*Plm(m,l,0)
 
             else: 
+
                 return 0
 
-
         elif self.tides is 'o':
+
             return
     
     ## ----------------------------------------------------------------------------------------------
@@ -215,7 +224,7 @@ class dynamical:
     
     def flowBc(self, surface=True):
         """
-        Radial flow boundary condition: dp = 0 at r=R and vr = 0 in the interior.
+        Radial displacement boundary condition: dp = 0 at r=R and vr = 0 in the interior.
         The BC right-hand side is added later; this is just vr.
         """
 
@@ -253,7 +262,7 @@ class dynamical:
             rfunc2.append( 4*F**2*(l-2)*Q(l-1)*Q(l)/x )
             
             # term from l (b1)
-            rfunc2.append( -2*F*(m + 2*F*(l+1)*Q(l)**2 - 2*F*l*Q(l+1)**2 )/x + surface*(4*OM**2-om2**2)*om/om2/self.g*self.Rp/np.pi )
+            rfunc2.append( -2*F*(m + 2*F*(l+1)*Q(l)**2 - 2*F*l*Q(l+1)**2 )/x + surface*(4*OM**2-om2**2)*om/om2*self.Rp/np.pi/ ( self.g - 4*np.pi*self.G*self.rho*self.Rp/(2*l+1) ) )
             
             # term from l+2 (b2)
             rfunc2.append( 4*F**2*(-l-3)*Q(l+2)*Q(l+1)/x )  
@@ -267,13 +276,16 @@ class dynamical:
     
     def Qlm(self,l):
         """ 
-        Recursivity coefficient.
+        Recursivity coefficient associated to spherical harmonic coupling.
         """
 
         m = abs(self.order)
         if l>=m:
+
             return np.sqrt((l-m)*(l+m)/(2*l-1)/(2*l+1))
+
         else:
+
             return 0
 
     ## ----------------------------------------------------------------------------------------------
@@ -293,12 +305,7 @@ class dynamical:
         def bcb(i):
             b = []
             # Potential is regular at the center
-            #[b.append( self.cheby.dTndx_bot(n) - self.degree[i]/self.x1*self.cheby.Tn_bot(n) ) for n in self.n]
-
-            #core in hydrostatic equilibrium
-            #[b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
-
-            [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
+            [b.append( self.cheby.dTndx_bot(n) - self.degree[i]/self.x1*self.cheby.Tn_bot(n) ) for n in self.n]
 
             return np.array(b)
 
@@ -344,7 +351,6 @@ class dynamical:
         last_row = np.concatenate( [ np.concatenate([block0] * (nxblocks-2) ), block(nxblocks-1, 0), block(nxblocks-1, 1) ] )
 
         middle_rows = []
-        # Fix 02/08/23: the coupling in the boundary condition was off. For example, it was not including l=2 in the calculation of l=4 bc. 
         [ middle_rows.append( np.concatenate([ (np.concatenate([block0]*col) if col is not 0 else []), block(col+1, 0), block(col+1, 1), block(col+1, 2), (np.concatenate( [block0]*(nxblocks-3-col) ) if (nxblocks-3-col) is not 0 else [] ) ]) ) for col in range(0, nxblocks-2) ]
         
         return np.vstack([first_row, middle_rows, last_row])
@@ -410,7 +416,7 @@ class dynamical:
             # add the forcing (right-hand side) in the outer boundary condition (dp=0)
             # Added a fix to dissipation.
 
-            FBCtop.append( (1 + self.k_hydro(l))*self.Ulm(l,m)*om_Q/self.g*norm*(4*self.OM**2 - self.om2**2) )
+            FBCtop.append( self.Ulm(l,m)*om_Q*norm*(4*self.OM**2 - self.om2**2)/ ( self.g - 4*np.pi*self.G*self.rho*self.Rp/(2*l+1) ) )
         
         # Concatenate the forcing and right-hand side of inner and outer boundary conditions.
         self.Bigf = np.concatenate( (self.f(), np.zeros(len(self.degree)), FBCtop ) )
@@ -427,15 +433,36 @@ class dynamical:
 
         self.get_BigL(kind)
         
-        self.an = self.cheby.lin_solve( self.BigL, self.Bigf)
+        self.an = self.cheby.lin_solve( self.BigL, self.Bigf, sparse=True)
 
         self.psi, self.dpsi, self.d2psi = self.u()
 
+        self.get_flow()
+        
         self.get_love()
+
+        return 
+    
+    def load(self, an, kind='bvp'):
+        """
+        Load a saved coefficients structure
+        """
+
+        self.get_Bigf(kind)
+
+        self.get_BigL(kind)
+        
+        self.an = an 
+
+        self.psi, self.dpsi, self.d2psi = self.u()
 
         self.get_flow()
 
+        self.get_love()
+
+
         return 
+
 
     # Evaluate love numbers
     def get_love(self):
@@ -450,13 +477,15 @@ class dynamical:
             # gravity is obtained only at the surface
             indSurface = np.argmax(self.cheby.xi)
             
-            # Analytical derivation of dk. Check notes.
-            dk = self.psi[i][indSurface]/(self.k_hydro(l)*self.Ulm(l,m))*(1 - self.g*(2*l+1)/(4*np.pi*self.G*self.rho*self.Rp))**(-1)*100
+            phi = 4*np.pi*self.G*self.rho*self.Rp/(2*l+1)*self.flow[i][indSurface]
 
-            k = self.k_hydro(l)*(1+dk/100)
+            k = phi/self.Ulm(l,m) 
+
+            dk = (k-self.k_hydro(l))/self.k_hydro(l)
 
             self.dk.append(dk)
             self.k.append(k)
+            self.phi.append( phi )
             self.Q.append( abs(np.absolute(k)/np.imag(k)) )
 
             """

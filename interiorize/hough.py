@@ -9,8 +9,69 @@ from scipy.special import spherical_jn as jn
 from scipy.special import lpmv as Plm
 from scipy.special import factorial
 import pdb
-from scipy.integrate import cumtrapz
 import matplotlib.pyplot as plt
+
+class internal_phi:
+    '''
+    Solve the internal gravity gravity 
+    '''
+
+    def __init__(self, cheby, dyn):
+        self.cheby = cheby # The chebyshev solver object
+        self.dyn = dyn     # The dynamical problem object
+        self.f = []
+
+        self.phi = []
+        self.dphi = []
+        self.d2phi = []
+        self.an  = []
+
+    def p(self):
+        return np.ones(len(self.cheby.xi))
+
+    def q(self):
+        return 2/self.cheby.xi 
+
+    def r(self, i):
+        l = self.dyn.degree[i]
+        return 1 - l*(l+1)/self.cheby.xi**2
+
+    def get_L(self, i):
+        L = []
+        [L.append( self.p()*self.cheby.d2Tn_x2(n) + self.q()*self.cheby.dTn_x(n) + self.r(i)*self.cheby.Tn(n) ) for n in self.n]
+        return L
+
+    def u(self):
+        u = []
+        [u.append(self.cheby.Tn(n)) for n in self.dyn.n]
+        du = []
+        [du.append(self.cheby.dTn_x(n)) for n in self.dyn.n]
+        d2u = []
+        [d2u.append(self.cheby.d2Tn_x2(n)) for n in self.dyn.n]
+        return (np.dot(np.array(u).T, self.an), np.dot(np.array(du).T, self.an),np.dot(np.array(d2u).T, self.an))
+
+    def solve(self):
+
+        for i in range(len(self.dyn.degree)):
+            L = self.get_L(i)
+            f = np.concatenate( [self.f, 0 ,0] )
+            
+            # boundary conditions (they will require some thinking)
+            bc1 = []
+            [bc1.append( self.cheby.Tn_bot(n) ) for n in self.n]
+
+            bc2 = []
+            [bc2.append( self.cheby.dTndx_top(n) + (l+1)/self.x0*self.cheby.Tn_top(n) ) for n in self.n]
+
+            L = np.concatenate( [np.array(L).T, bc1, bc2] )
+
+            self.an.append( self.cheby.lin_solve( L, f, sparse=True) )
+            phi, dphi, d2phi = self.u()
+            self.phi.append(phi)
+
+        return
+
+
 
 class dynamical:
     def __init__(self, cheby, om, OM, Mp, ms, a, Rp, 
@@ -74,6 +135,7 @@ class dynamical:
         self.dk = []
         self.k = []
         self.Q = []
+        self.E = []
 
     def k_hydro(self, l):
         """
@@ -198,7 +260,7 @@ class dynamical:
 
         return np.concatenate([phit]*3) 
     
-    def Qlm(self,l):
+    def Qlm(self, l):
         """ 
         Recursivity coefficient associated to spherical harmonic coupling.
         """
@@ -275,13 +337,16 @@ class dynamical:
         bc = {'bot', 'top'}
         """
         nbc = len(self.degree)
-        def bcb(l):
+        def bcb(l, spec=None):
             b = []
             if bc is 'bot':
                 [b.append( self.cheby.Tn_bot(n) ) for n in self.n]
 
             elif bc is 'top':
                 [b.append( self.cheby.Tn_top(n) ) for n in self.n]
+            
+            elif bc is 'top_dp':
+                [b.append( self.cheby.Tn_top(n)*(self.g - 4*np.pi*self.G*self.rho*self.Rp/(2*l+1)) ) for n in self.n]
             
             elif bc is 'bot_dx':
                 [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
@@ -294,12 +359,41 @@ class dynamical:
                 Stress free bc at the top
                 """
                 [b.append( self.cheby.dTndx_top(n)/self.x2 - self.cheby.Tn_top(n)/self.x2**2 ) for n in self.n]
+            
+            elif bc is 'bot_sf':
+                """
+                Stress free bc at the bot
+                """
+                [b.append( self.cheby.dTndx_bot(n)/self.x1 - self.cheby.Tn_bot(n)/self.x1**2 ) for n in self.n]
 
             elif bc is 'zero':
                 [b.append( 0 ) for n in self.n]
 
+            elif spec is 'y3_minus':
+                [b.append( (l-1)/l*self.Qlm(l)*self.cheby.dTndx_bot(n) ) for n in self.n]
+
+            elif spec is 'y3_plus':
+                [b.append( (l+2)/(l+1)*self.Qlm(l+1)*self.cheby.dTndx_bot(n) ) for n in self.n]
+
+            elif bc is 'y_1':
+                [b.append( (1j*self.om2/2/self.OM - 1j*self.order/l/(l+1))*self.cheby.d2Tndx2_bot(n)*self.x1/l/(l+1) ) for n in self.n]
+
+
             # output is a numpy array of lenght N
             return np.array(b)
+        
+        if bc is 'special':
+            
+            first_col = np.concatenate([ np.zeros(self.N), bcb(2, spec='y3_plus'), np.concatenate([np.zeros(self.N)]*(nbc-2))   ]) 
+            last_col = np.concatenate([ np.concatenate([np.zeros(self.N)]*(nbc-2)), bcb(nbc+2, spec='y3_minus') ,np.zeros(self.N)   ]) 
+ 
+            cols = []
+            [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*(col-1)) if col-1 is not 0 else np.array([])), bcb(col+2, 'y3_minus'), np.zeros(self.N), bcb(col+2, 'y3_plus') , (np.concatenate([np.zeros(self.N)]*(nbc-2-col)) if (nbc-2-col)  is not 0 else np.array([]) )  ]) ) for col in range(1, nbc-1) ]
+            
+            cols.append(last_col)
+            cols.insert(0, first_col)
+            
+            return np.array(cols)
 
         cols = []
         [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col is not 0 else np.array([])), bcb(col+2), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  is not 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
@@ -321,10 +415,17 @@ class dynamical:
             # Flow is restricted to a shell (i.e., global ocean)
             
             row1 = np.concatenate( [self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero')], axis=1) # y1 = 0 at ocean bottom
-            row2 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero')], axis=1) # y3 = 0 at ocean bottom
-            row3 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot')], axis=1) # psi  at ocean bottom
-            row4 = np.concatenate( [self.get_bc_block(bc='top'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='top')/self.g], axis=1) # y1 at surface
-            row5 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='top'), self.get_bc_block(bc='zero')], axis=1) # y3 at surface
+            row2 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot_sf'), self.get_bc_block(bc='zero')], axis=1) # y3 = 0 at ocean bottom
+            row4 = np.concatenate( [self.get_bc_block(bc='top_dp'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='top')], axis=1) # y1 at surface
+            
+            # from continuity 
+            #row5 = np.concatenate( [self.get_bc_block(bc='bot_dx'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero')], axis=1)
+            row5 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot')], axis=1)
+            #row5 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='top'), self.get_bc_block(bc='zero')], axis=1)
+
+            row3 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='top_sf'), self.get_bc_block(bc='zero')], axis=1) # 
+            #row3 = np.concatenate( [self.get_bc_block(bc='y_1'), self.get_bc_block(bc='special'), self.get_bc_block(bc='zero')], axis=1) # 
+            # from eq 1.
             row6 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot_dx')], axis=1) # dpsi at ocean bottom
 
 
@@ -347,7 +448,7 @@ class dynamical:
             # add the forcing (right-hand side) in the outer boundary condition (dp=0)
             # Added a fix to dissipation.
 
-            FBCtop.append( (1 + self.k_hydro(l))*self.Ulm(l,m)/self.g )
+            FBCtop.append( self.Ulm(l,m) )
         
         # Concatenate the forcing and right-hand side of inner and outer boundary conditions.
         self.Bigf = np.concatenate( (self.f(), np.zeros(5*len(self.degree)), FBCtop ) )
@@ -375,9 +476,11 @@ class dynamical:
         self.get_y2()
         
         self.get_love()
+        
+        self.get_power()
 
         return 
-    
+
     def load(self, an, kind='bvp'):
         """
         Load a saved coefficients structure
@@ -397,9 +500,7 @@ class dynamical:
 
         self.get_love()
 
-
         return 
-
 
     # Evaluate love numbers
     def get_love(self):
@@ -429,6 +530,8 @@ class dynamical:
             self.dk.append(dk)
             self.k.append(k)
             self.phi.append( phi )
+
+            # It only works well when out of resonance.
             self.Q.append( abs(np.absolute(k)/np.imag(k)) )
 
             """
@@ -440,17 +543,36 @@ class dynamical:
 
         return
 
+    def get_power(self):
+        """
+        Calculate the power dissipated by integrating the flow
+        """
+    
+        for i in range(0,len(self.degree)):
+            l = self.degree[i]
+            
+            gamma = 1/self.tau
+            r = self.Rp*self.cheby.xi/np.pi
+
+            En = gamma*self.rho*self.om**2*np.trapz(r**2*abs(self.y1[i])**2 + r**2*l*(l+1)*(abs(self.y2[i])**2 + abs(self.y3[i])**2), x=r)  
+
+            self.E.append( abs(En) )
+
+        return
+
     def get_y2(self):
         """
-         Build the missing spheroidal component of displacement 
+         Build the missing spheroidal component of displacement using continuity 
+
+         NOTE: The derivatives obtained from the solver correspond to derivatives w.r.t. variable 'xi'
         """
 
-        x = self.cheby.xi
+        r = self.Rp*self.cheby.xi/np.pi
         y2 = []
 
         for i in range(0,len(self.degree)):
             l = self.degree[i]
-            y2.append( (x**2*self.dy1[i]+ 2*x*self.y1[i])/l/(l+1)/x )
+            y2.append( (r**2*self.dy1[i]*np.pi/self.Rp+ 2*r*self.y1[i])/l/(l+1)/r )
 
         self.y2 = y2
 

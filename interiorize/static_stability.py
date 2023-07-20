@@ -1,5 +1,5 @@
 # Integration by fitting chebyshev polynomials.
-# A polytrope with a compositional gradient (static stability) is evaluated. 
+# An n=1 polytrope with a compositional gradient (static stability) is evaluated. 
 #
 # Ben Idini, Apr 2020.
 

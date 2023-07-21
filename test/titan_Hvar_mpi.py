@@ -31,7 +31,7 @@ size = comm.Get_size()
 #N2_array = np.linspace(1e-8, 1e-6, N2_size)
 
 G   = 6.67e-8
-label = 'tau9_N2_H240-246'
+label = 'tau9_Hvar_mpi'
 # Titan
 R       = 2575e5    # Mean radius (cm)
 rhom    = 1.8798     # Mean density (g/cc)
@@ -64,6 +64,7 @@ ome     = oms     # eccentricity tidal frequency
 
 # Varying depth calculations
 H_spacing   = 0.05 # in km
+H_spacing   = 1 # in km
 H_vec       = np.arange(200, 400 + H_spacing, H_spacing)*1e5
 H_size      = len(H_vec)
 eta_vec     = (R-H_vec)/R
@@ -103,8 +104,7 @@ for ind in range(H_lower_bound, H_upper_bound):
 
     k2_vec[ind], E_vec[ind] = main_calc() 
     
-    print("Calculation at H = {} km done.".format(int(H_vec[ind]/1e5)))
-
+    print("Iteration ", ind, " done in processor ", rank)
 
 if rank == 0:
     k2_global = np.zeros(len(H_vec))
@@ -128,11 +128,7 @@ if rank ==0:
 
         k2_global[ind], E_global[ind] = main_calc()
 
-    print(H_vec)
-    print(k2_global)
-    print(E_global)
-
-    print("time spent with ", size, " threads in milliseconds")
-    print("-----", int((stop_time - start_time) * 1000), "-----")
+    print("time spent with ", size, " threads in minutes")
+    print("-----", int((stop_time - start_time)/60 ), "-----")
 
     dill.dump([H_vec, k2_global, E_global], file=open('./k2Q_Rcvec_L{}_N{}{}.pickle'.format(np.max(L), N, label), 'wb') )

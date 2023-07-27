@@ -593,7 +593,7 @@ class HeavyElements:
         return xi, rhon, Z, new_xic, success
 
     # rho_c:    central density
-    def edo_rho(self, Z, xi,kind='Z'):
+    def edo_rho(self, Z, xi, kind='Z'):
         # Constant ratio of H-He and Z density model by me.
         # return: non dimensional density model scaled to the central density
         if kind is 'Z': 
@@ -618,11 +618,35 @@ class HeavyElements:
         def f(xi):
             return np.zeros(len(xi))
         
+        def L(p, q, r, clo, cup):
+            L = []
+            [L.append( p(xi)*sol.d2Tn_x2(n) + q(xi)*sol.dTn_x(n) + r(xi)*sol.Tn(n, sol.T) ) for n in np.arange(0, sol.N)]
+            return np.vstack( (np.array(L).T, bc(clo, kind='lower'), bc(cup, kind='lower')) ) # add the boundary conditions ('ivp')
+
+        def bc(c, kind='lower'):
+            bc = []
+            if kind is 'lower':
+                [bc.append( c[0]/sol.dxi_dx*(-1)**(n+1)*n**2 + c[1]*(-1)**n ) for n in np.arange(0, sol.N)]
+            elif kind is 'upper':
+                [bc.append( c[0]/sol.dxi_dx*n**2 + c[1] ) for n in np.arange(0, sol.N)]
+            return bc 
+
+        def u(t,an):
+            u = []
+            [u.append(sol.Tn(n,t)) for n in np.arange(0, sol.N)]
+            return np.dot(np.array(u).T, an)
+
         # Solve the ODE
         # We define a new solver to get the appropriate xi and chain rule
-        sol = cheby(npoints=len(xi)+2, loend=min(xi), upend=max(xi),direction=-1)
-        sol.solve(p, q, r, f, [0,1,min(f_z)], [1,0,0 ], kind='ivp') 
-        return sol.u(sol.T)[0]/f_z
+        sol = cheby(npoints=len(xi)+2, loend=min(xi), upend=max(xi), direction=-1)
+        # Reworking this
+        #sol.solve(p, q, r, f, [0,1,min(f_z)], [1,0,0 ], kind='ivp') 
+        clo = [0,1,min(f_z)]
+        cup = [1,0,0 ]
+        blockL = L(p, q, r, clo, cup)
+        f_bc = np.concatenate( (f(xi), [clo[2], cup[2]]) ) 
+        an = sol.lin_solve( blockL, f_bc) 
+        return u(sol.T,an)/f_z
 
     # Get the normalized g (see the normalization factor in my notes)
     def get_g(self,x,rho_x,G):

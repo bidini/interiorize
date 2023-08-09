@@ -31,7 +31,7 @@ size = comm.Get_size()
 #N2_array = np.linspace(1e-8, 1e-6, N2_size)
 
 G   = 6.67e-8
-label = 'tau9_Hvar_mpi'
+label = 'tau9_Hvar_mpi_H50-300_Ne9'
 # Titan
 R       = 2575e5    # Mean radius (cm)
 rhom    = 1.8798     # Mean density (g/cc)
@@ -45,7 +45,7 @@ Rs = 5.8232e9
 
 # Model parameters
 rhow    = 1.
-N2      = 1e-8         # Ocean stratification
+N2      = 1e-9         # Ocean stratification
 tau     = 1e9       # frictional dissipation
 
 # Chebyshev solver
@@ -63,9 +63,8 @@ Om      = oms                # rotational frequency in synchronous rotation
 ome     = oms     # eccentricity tidal frequency
 
 # Varying depth calculations
-H_spacing   = 0.05 # in km
-H_spacing   = 1 # in km
-H_vec       = np.arange(200, 400 + H_spacing, H_spacing)*1e5
+H_spacing   = 0.02 # in km
+H_vec       = np.arange(50, 300 + H_spacing, H_spacing)*1e5
 H_size      = len(H_vec)
 eta_vec     = (R-H_vec)/R
 Rc_vec      = R*eta_vec
@@ -104,7 +103,7 @@ for ind in range(H_lower_bound, H_upper_bound):
 
     k2_vec[ind], E_vec[ind] = main_calc() 
     
-    print("Iteration ", ind, " done in processor ", rank)
+#    print("Iteration ", ind, " done in processor ", rank)
 
 if rank == 0:
     k2_global = np.zeros(len(H_vec))

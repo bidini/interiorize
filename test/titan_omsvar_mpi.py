@@ -1,4 +1,4 @@
-# Obtain dynamical tides in an ocean with varying stratification (B.V. frequency).
+# Obtain dynamical tides in an ocean with varying forcing frequency in eccentricity tides.
 #
 # Guideline:
 # https://computationalmechanics.in/parallelizing-for-loop-in-python-with-mpi/
@@ -7,7 +7,7 @@
 # https://mpitutorial.com/tutorials/mpi-reduce-and-allreduce/
 #
 # Simple run: 
-# mpirun -np 6 python3 titan_N2var_mpi.py
+# mpirun -np 6 python3 titan_omvar_mpi.py
 #
 # 03/2023
 # Ben Idini
@@ -43,6 +43,7 @@ Rs = 5.8232e9
 rhow    = 1.
 tau     = 1e9       # frictional dissipation
 H	= 300e5
+N2	= 1.4454e-8
 
 # Chebyshev solver
 N = 80         # number of Chebyshev polynomials
@@ -57,14 +58,13 @@ Rc	= R*eta
 a	= np.pi*eta
 rhoc	= 3*ms/(4*np.pi*Rc**3) - rhow*((R/Rc)**3 - 1)
 b       = np.pi
-sma     = (G*(Ms+ms)*(Ts*3600)**2/4/np.pi**2)**(1/3)     # satisfy Kepler's third law
-oms     = 2*np.pi/Ts/3600           # orbital frequency
-Om      = oms                # rotational frequency in synchronous rotation
-ome     = oms     # eccentricity tidal frequency
 
-# Varying N2 calculations
-N2_size   = 500 
-N2_vec      = np.linspace(1.375e-8, 1.525e-8, N2_size)
+# Varying om calculations (orbital frequency)
+oms_size   = 12500 
+oms_vec      = np.linspace(1, 3.312, oms_size)*2*np.pi/Ts/3600
+sma_vec	= (G*(Ms+ms)/oms_vec**2)**(1/3)     # satisfy Kepler's third law
+Om_vec = oms_vec  # rotational frequency in synchronous rotation
+ome_vec = oms_vec # eccentricity tidal frequency
 k2_vec = np.zeros(len(N2_vec))
 E_vec = np.zeros(len(N2_vec))
 
@@ -73,36 +73,36 @@ def main_calc():
     
     cheb = cheby(npoints=N, loend=a, upend=b)
 
-    dyn = dynamical(cheb, ome, Om, ms, Ms, sma, Rp,
+    dyn = dynamical(cheb, ome_vec[ind], Om_vec[ind], ms, Ms, sma_vec[ind], Rp,
                  rho=rhow, rhoc=rhoc, Rc=Rc,
                  l=L, m=M, tau=tau, x1=a, x2=b,
-                 tides='ee', e=e, N2=N2_vec[ind])
+                 tides='ee', e=e, N2=N2)
     
     dyn.solve(kind='bvp-core')
 
     return dyn.k[0], sum(dyn.E)
 
 # MPI 
-num_per_rank = N2_size//size
+num_per_rank = oms_size//size
 
-N2_lower_bound = rank*num_per_rank 
-N2_upper_bound = (rank + 1)*num_per_rank
+oms_lower_bound = rank*num_per_rank 
+oms_upper_bound = (rank + 1)*num_per_rank
 
-print("Processor ", rank, ": iterations ", N2_lower_bound," to ", N2_upper_bound - 1, flush=True)
+print("Processor ", rank, ": iterations ", oms_lower_bound," to ", oms_upper_bound - 1, flush=True)
 
 comm.Barrier() # start parallel processes
 
 start_time = time.time()
 
-for ind in range(N2_lower_bound, N2_upper_bound):
+for ind in range(oms_lower_bound, oms_upper_bound):
 
     k2_vec[ind], E_vec[ind] = main_calc() 
     
     print("Iteration ", ind, " done in processor ", rank)
 
 if rank == 0:
-    k2_global = np.zeros(len(N2_vec))
-    E_global = np.zeros(len(N2_vec))
+    k2_global = np.zeros(len(oms_vec))
+    E_global = np.zeros(len(oms_vec))
 
 else:
     k2_global = None
@@ -118,11 +118,11 @@ stop_time = time.time()
 
 if rank ==0:
     # Complete processes that did not evenly fit the number of processors
-    for ind in range(size*num_per_rank, N2_size):
+    for ind in range(size*num_per_rank, oms_size):
 
         k2_global[ind], E_global[ind] = main_calc()
 
     print("time spent with ", size, " threads in minutes")
     print("-----", int((stop_time - start_time)/60 ), "-----")
 
-    dill.dump([N2_vec, k2_global, E_global], file=open('./k2Q_N2vec_L{}_N{}{}_H{}.pickle'.format(np.max(L), N, label, int(H/1e5)), 'wb') )
+    dill.dump([oms_vec, k2_global, E_global], file=open('./k2Q_omsvec_L{}_N{}{}_H{}.pickle'.format(np.max(L), N, label, int(H/1e5)), 'wb') )

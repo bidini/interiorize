@@ -65,8 +65,8 @@ oms_vec      = np.linspace(1, 3.312, oms_size)*2*np.pi/Ts/3600
 sma_vec	= (G*(Ms+ms)/oms_vec**2)**(1/3)     # satisfy Kepler's third law
 Om_vec = oms_vec  # rotational frequency in synchronous rotation
 ome_vec = oms_vec # eccentricity tidal frequency
-k2_vec = np.zeros(len(N2_vec))
-E_vec = np.zeros(len(N2_vec))
+k2_vec = np.zeros(len(oms_vec))
+E_vec = np.zeros(len(oms_vec))
 
 # Main calculation
 def main_calc():

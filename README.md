@@ -6,7 +6,7 @@ Dynamical tides (i.e., dynamical Love number) of gas giant planets and icy satel
 
 Benjamin Idini
 benjamin.idini@gmail.com
-2023
+(2023)
 
 Publications:
 

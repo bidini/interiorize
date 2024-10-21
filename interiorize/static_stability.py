@@ -433,6 +433,7 @@ class HeavyElements:
     # xi:    collocation points along the radius
     # xic:   dilute core inner boundary
     # xr:   contraint to the planetary radius (rad). Controls the total mass of heavy elements.
+    # Me:   Earth's mass. Only used to report results
     # Success is False if the maximum number of iterations is reached.
     
     def __init__(self,rhom=1,Zc=0,Ze=0,xr=3,Lc=0,K=2.1e12,G=6.67e-8,Me=5.97e27):
@@ -583,13 +584,17 @@ class HeavyElements:
                 rhon = self.edo_rho(Z, xi,kind2)
                 b = new_b # update radius
                 ite += 1
+
             rhon -= rhon[-1]
             rhon += 1e-4 # approximately 1 mg/cc atmospheric density
             new_xic = xic *(1+ 10*(b-xr)/xr) 
             ite += 1
+
         if ite >= ite_max:
             success = False
+
         Z = self.get_Z(xi, Zc, Ze, new_xic, Lc, kind=kind)
+
         return xi, rhon, Z, new_xic, success
 
     # rho_c:    central density
@@ -603,6 +608,10 @@ class HeavyElements:
         elif kind is 'Y':
             f_z = (1-Z)/(1-0.53*Z)/(1-.28)
             f_z = (1-Z)/(1-0.53*Z)/.851
+            Dlnf_z = np.gradient(np.log(f_z), xi) 
+        elif kind is 'Z_v2':
+            rho_rhoz = 0.4
+            f_z = (1-Z)/(1-0.4*Z)
             Dlnf_z = np.gradient(np.log(f_z), xi) 
 
         # define the ODE:
@@ -620,7 +629,7 @@ class HeavyElements:
         
         def L(p, q, r, clo, cup):
             L = []
-            [L.append( p(xi)*sol.d2Tn_x2(n) + q(xi)*sol.dTn_x(n) + r(xi)*sol.Tn(n, sol.T) ) for n in np.arange(0, sol.N)]
+            [L.append( p*sol.d2Tn_x2(n) + q*sol.dTn_x(n) + r*sol.Tn(n, sol.T) ) for n in np.arange(0, sol.N)]
             return np.vstack( (np.array(L).T, bc(clo, kind='lower'), bc(cup, kind='lower')) ) # add the boundary conditions ('ivp')
 
         def bc(c, kind='lower'):
@@ -641,11 +650,15 @@ class HeavyElements:
         sol = cheby(npoints=len(xi)+2, loend=min(xi), upend=max(xi), direction=-1)
         # Reworking this
         #sol.solve(p, q, r, f, [0,1,min(f_z)], [1,0,0 ], kind='ivp') 
-        clo = [0,1,min(f_z)]
-        cup = [1,0,0 ]
+        p = p(xi)
+        q = q(xi)
+        r = r(xi)
+        cup = [1, 0, 0 ]
+        clo = [0, 1, min(f_z)]
         blockL = L(p, q, r, clo, cup)
         f_bc = np.concatenate( (f(xi), [clo[2], cup[2]]) ) 
         an = sol.lin_solve( blockL, f_bc) 
+        
         return u(sol.T,an)/f_z
 
     # Get the normalized g (see the normalization factor in my notes)
@@ -668,8 +681,10 @@ class HeavyElements:
     def get_Z(self,xi,Zc, Ze, xic, Lc,kind='tanh'): 
         if kind is 'tanh':
             return Ze + (Zc-Ze)/2*( 1-np.tanh(2*np.pi/Lc*(xi-xic) - np.pi ) )
+
         elif kind is 'sin':
             return Ze + (Zc-Ze)*np.sin( np.pi/2*(xic+Lc-xi)/Lc)**2*(xi>xic)*(xi< xic+Lc) + (Zc-Ze)*(xi<xic)
+
 
     def run_gyre(self, dir_model, in_gyre, bin_gyre):
         self.dir_gyre_model = dir_model 

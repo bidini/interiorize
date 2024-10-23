@@ -25,7 +25,7 @@ from scipy.special import spherical_jn as jn
 from scipy.special import lpmv as Plm
 from scipy.special import factorial
 import pdb
-from scipy.integrate import cumtrapz
+from scipy.integrate import cumulative_trapezoid as cumtrapz
 import matplotlib.pyplot as plt
 
 class dynamical:

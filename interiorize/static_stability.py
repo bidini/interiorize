@@ -5,7 +5,7 @@
 
 import numpy as np
 from scipy.special import spherical_jn as jn
-from scipy.integrate import cumtrapz
+from scipy.integrate import cumulative_trapezoid as cumtrapz
 from scipy.special import factorial
 from scipy.special import lpmv as Plm
 import matplotlib.pyplot as plt

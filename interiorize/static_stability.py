@@ -13,7 +13,7 @@ from interiorize.solvers import cheby
 import pdb
 
 import subprocess
-import pygyre as pg
+#import pygyre as pg
 from os import system,listdir,path
 
 from matplotlib import rcParams
@@ -611,7 +611,8 @@ class HeavyElements:
             Dlnf_z = np.gradient(np.log(f_z), xi) 
         elif kind is 'Z_v2':
             rho_rhoz = 0.4
-            f_z = (1-Z)/(1-0.4*Z)
+            #f_z = (1-Z)/(1-0.4*Z)
+            f_z = (1-0.6*Z)
             Dlnf_z = np.gradient(np.log(f_z), xi) 
 
         # define the ODE:

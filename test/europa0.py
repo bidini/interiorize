@@ -23,28 +23,28 @@ import dill
 ## INPUT PARAMETERS
 G   = 6.67e-8                           # gravitational universal constant
 # Titan
-R       = 2575e5    # Mean radius (cm)
-rhom    = 1.8798     # Mean density (g/cc)
-MOI     = 0.3414     # Moment of inertia
-e       = 0.0288     # Eccentricity
-ms      = 1.3452e26    # mass (g)
-Ts      = 15.945*24 # orbital period (hours)
-# Saturn
-Ms = 5.683e29
-Rs = 5.8232e9
+R       = 1561e5    # Mean radius (cm)
+rhom    = 3.013     # Mean density (g/cc)
+e       = 0.009     # Eccentricity
+ms      = 4.799844e25    # mass (g)
+Ts      = 3.551*24 # orbital period (hours)
+# Jupiter 
+Ms = 1.8982e30
+Rs = 6.9911e9 
 
 # MODEL PARAMETERS
 rhow    = 1.     
-N2      = 1.e-8   # high order g-mode 
+N2      = 1e-5   # high order g-mode 
 
-H       = 50e5     # Ocean bottom depth  (cm)
-tau     = 1e9       # frictional dissipation (1e5-1e11)
+H       = 150e5     # Ocean bottom depth  (cm)
+#H       = 106.18e5
+tau     = 1e8       # frictional dissipation (1e5-1e11)
 # Chebyshev solver
-N = 80         # number of Chebyshev polynomialsi
-Lmax = 80
+N = 100         # number of Chebyshev polynomialsi
+Lmax = 100
 M = 2
 save = False
-label = 'tau9_gmode_'
+label = '3tau8_g2mode_'
 
 # Initial calculations
 L       = np.arange(abs(M), Lmax+1)
@@ -55,7 +55,9 @@ a       = np.pi*eta
 b       = np.pi                              # planet's surface   
 rhoc    = 3*ms/(4*np.pi*Rc**3) - rhow*((R/Rc)**3 -1)  # fit satellite's mass
 sma     = (G*(Ms+ms)*(Ts*3600)**2/4/np.pi**2)**(1/3)     # satisfy Kepler's third law                   
+sma     = 1.5*61735220529.9045
 oms     = 2*np.pi/Ts/3600           # orbital frequency
+oms     = (G*(Ms+ms)/sma**3)**(1/2)
 Om      = oms                # rotational frequency in synchronous rotation
 om      = M*(oms - Om)     # conventional tidal frequency
 ome     = oms     # eccentricity tidal frequency
@@ -160,11 +162,10 @@ def my_plot2():
 cheb = cheby(npoints=N, loend=a, upend=b)
 
 # Solve the tidal motion of the stratified ocean
-dyn = dynamical(cheb, ome, Om, ms, Ms, sma, Rp, 
+dyn = dynamical(cheb, ome, Om*0, ms, Ms, sma, Rp, 
             rho=rhow, rhoc=rhoc, Rc=Rc,
             l=L, m=M, tau=tau, x1=a, x2=b,
                tides='ee', e=e, N2=N2)
-
 print('model has a hydrostatic k2 = {:.4f}'.format(dyn.k_hydro(2)))
 
 dyn.solve(kind='bvp-core') # flow with ocean bottom
@@ -172,6 +173,7 @@ dyn.solve(kind='bvp-core') # flow with ocean bottom
 my_plot1()
 my_plot2()
 
+pdb.set_trace()
+
 print('model has a dynamic k2 = ',dyn.k[0])
 
-pdb.set_trace()

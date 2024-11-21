@@ -174,8 +174,24 @@ class dynamical:
                 return 0
 
         elif self.tides == 'o':
-
             return
+
+        elif self.tides == 'm2m':
+            """
+            Moon to moon tides.
+            """
+
+            if l == 2:
+                
+                # This is not the sma anymore. It contains the amplitude of the potential directly after fourier projection.
+
+                # Clean later in a better implementation.
+                return self.a
+
+            else:
+
+                return 0
+
     
     ## ----------------------------------------------------------------------------------------------
     # Define the coefficients in the equations.   

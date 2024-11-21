@@ -45,7 +45,7 @@ R       = 1561e5    # Mean radius (cm)
 rhom    = 3.013     # Mean density (g/cc)
 MOI     = 0.346     # Moment of inertia
 e       = 0.009     # Eccentricity
-H       = 150e5     # Ocean thickness (cm)
+H       = 186.5e5     # Ocean thickness (cm)
 rhow    = 1.       # Ocean density
 ms      = 4.8e25    # Europa mass (g)
 Ts      = 85.228344 # Europa's orbital period (hours)
@@ -53,13 +53,13 @@ Ts      = 85.228344 # Europa's orbital period (hours)
 # Jupiter
 Mj = 1.898e30
 Rj = 6.99e9
-tau = 1e7
+tau = 2e6
 
 # Chebyshev solver
 N = 200         # number of Chebyshev polynomialsi
 Lmax = 200
 M = 2
-save = False
+save = True
 label = 'tau7'
 
 L = np.arange(M if M>1 else 3, M+Lmax, 2)
@@ -78,7 +78,7 @@ L = np.arange(M if M>1 else 3, M+Lmax, 2)
 # 0.88737R
 # 0.92253R
 
-eta     = 0.9
+eta     = (R-H)/R
 Rc      = R*eta        # core radius
 Rp      = R             # body radius
 a       = Rc/Rp*np.pi
@@ -89,7 +89,6 @@ oms     = 2*np.pi/Ts/3600           # orbital frequency
 Om      = oms                # Europa's rotational frequency
 om      = M*(oms - Om)     # conventional tidal frequency
 ome     = oms     # eccentricity tidal frequency
-ome = 0.9e-5 
 Om = ome
 
 print('conventional tidal frequency {} mHz'.format(om*1e3))
@@ -224,7 +223,7 @@ def my_plot2():
     #colorb2.set_label('m')
     '''
     if save:
-        plt.savefig('/Users/benja/Documents/projects/europa/results/xir_Rc{}p_L{}_N{}{}.png'.format(int(eta*100), np.max(L), N, label), dpi=1200)
+        plt.savefig('/Users/benja/Documents/projects/europa/mpi_models/xir_Rc{}p_L{}_N{}{}.png'.format(int(eta*100), np.max(L), N, label), dpi=1200)
     else:
 
         plt.show()

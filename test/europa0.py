@@ -34,14 +34,14 @@ Rs = 6.9911e9
 
 # MODEL PARAMETERS
 rhow    = 1.     
-N2      = 1e-5   # high order g-mode 
+N2      = 1e-8*0   # high order g-mode 
 
-H       = 150e5     # Ocean bottom depth  (cm)
+H       =150e5     # Ocean bottom depth  (cm)
 #H       = 106.18e5
-tau     = 1e8       # frictional dissipation (1e5-1e11)
+tau     = 1e7       # frictional dissipation (1e5-1e11)
 # Chebyshev solver
-N = 100         # number of Chebyshev polynomialsi
-Lmax = 100
+N = 200         # number of Chebyshev polynomialsi
+Lmax = 200
 M = 2
 save = False
 label = '3tau8_g2mode_'
@@ -162,7 +162,7 @@ def my_plot2():
 cheb = cheby(npoints=N, loend=a, upend=b)
 
 # Solve the tidal motion of the stratified ocean
-dyn = dynamical(cheb, ome, Om*0, ms, Ms, sma, Rp, 
+dyn = dynamical(cheb, ome, Om, ms, Ms, sma, Rp, 
             rho=rhow, rhoc=rhoc, Rc=Rc,
             l=L, m=M, tau=tau, x1=a, x2=b,
                tides='ee', e=e, N2=N2)

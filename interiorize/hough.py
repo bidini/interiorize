@@ -17,6 +17,8 @@ from scipy.sparse import bsr_array, block_array, diags_array
 class internal_phi:
     '''
     Solve the internal gravity gravity 
+
+    Work in progress.
     '''
 
     def __init__(self, cheby, dyn):
@@ -262,9 +264,6 @@ class dynamical:
         r2 = q(l+1)*(l+2)**2/(l+1)*OM
         return [0,q0,r0], [0,0,0], [0,q2,r2]
 
-    def eqn_zeros(self, l):
-        return [0,0,0], [0,0,0], [0,0,0]
-    
     def f(self):
         """
         Right-hand side in the system of equations.
@@ -347,69 +346,23 @@ class dynamical:
         
         return L
 
-    def get_eqn_block(self, eqn: list, kind: str = 'bvp'):
-        """
-        Build a block for a given equation and variable, sub element in left-hand side matrix
-        """
-        def block(pqr):
-            # This block evaluates any combination of the equation at a given degree l using a set of three coefficients that include the coupling.
-            B = []
-            [B.append( pqr[0]*self.cheby.d2Tn_x2(n) + pqr[1]*self.cheby.dTn_x(n) + pqr[2]*self.cheby.Tn(n) ) for n in self.n]
-
-            # The output should have size (len(xi), N).
-            return np.array(B).T
-        
-        xi = self.cheby.xi
-        nxblocks = len(self.degree)
-        block0 = np.zeros((len(xi), self.N))
-        block_empty = np.array([[]]*len(xi))
-        # Concatenate horizontally to create the columns of BigL. Each row represents the coupled ODE at a given degree l.
-        # The list eqn(l) has l-1 coupling on index 0, and l+1 coupling on index 2.
-        PQR0 = eqn(2)
-        PQRend = eqn(self.degree[-1])
-        first_row = np.concatenate( [ block(PQR0[1]) , block(PQR0[2]), np.concatenate([block0] * (nxblocks-2), axis=1) ], axis=1 )
-        last_row = np.concatenate( [ np.concatenate([block0] * (nxblocks-2), axis=1 ), block(PQRend[0]), block(PQRend[1]) ], axis=1 )
- 
-        middle_rows = []
-        for row in range(0, len(self.degree)-2):
-            PQR = eqn(row+3)
-            middle_rows.append( np.concatenate([ (np.concatenate([block0] * row, axis=1) if row != 0 else block_empty), block(PQR[0]), block(PQR[1]), block(PQR[2]), (np.concatenate([block0] * (nxblocks-3-row), axis=1) if (nxblocks-3-row) != 0 else block_empty ) ], axis=1 ) ) 
-
-        # Concatenate vertically to assamble the columns of BigL into a matrix
-        L = np.concatenate( [first_row, np.concatenate(middle_rows, axis=0), last_row], axis=0 )
-
-        return L
-
-    def get_BigL(self, kind='bvp-core'):
+    def get_BigL(self, kind: str = 'bvp-core'):
         """
         ensamble the left-hand side matrix of the problem. 
         """
         
-        """
-        block = self.get_eqn_block
-        
-        block(self.eqn1_y3)
-        # Concatenate equation blocks for each equation and variable.
-        row1 = np.concatenate([block(self.eqn1_y1), block(self.eqn1_y3), block(self.eqn1_psi)], axis=1) 
-        row2 = np.concatenate([block(self.eqn2_y1), block(self.eqn2_y3), block(self.eqn_zeros)], axis=1)
-        row3 = np.concatenate([block(self.eqn3_y1), block(self.eqn3_y3), block(self.eqn_zeros)], axis=1)
-        BigL = np.concatenate( [row1, row2, row3 ])
-        
-        self.add_bc(BigL, kind=kind)
-        """
-
         block = self.get_eqn_sparse
-
         bc_block = self.get_bc_block
+
         self.BigL = block_array( [[ block(self.eqn1_y1), block(self.eqn1_y3), block(self.eqn1_psi)],
                                  [ block(self.eqn2_y1), block(self.eqn2_y3), None],
                                  [ block(self.eqn3_y1), block(self.eqn3_y3), None],
-                                 [ bsr_array(bc_block(bc='bot')), None, None],
-                                 [ None, bsr_array(bc_block(bc='bot_sf')), None],
-                                 [ None, bsr_array(bc_block(bc='top_sf')), None],
-                                 [ None, None, bsr_array(bc_block(bc='bot'))],
-                                 [ None, None, bsr_array(bc_block(bc='bot_dx'))],
-                                 [ bsr_array(bc_block(bc='top_dp')), None, bsr_array(bc_block(bc='top'))] 
+                                 [ bsr_array(bc_block(bc='bot')), None, None], # y1 = 0 at ocean bottom
+                                 [ None, bsr_array(bc_block(bc='bot_sf')), None], # y3 = 0 at ocean bottom
+                                 [ None, bsr_array(bc_block(bc='top_sf')), None], # continuity
+                                 [ None, None, bsr_array(bc_block(bc='bot'))], # continuity
+                                 [ None, None, bsr_array(bc_block(bc='bot_dx'))], # dpsi at ocean bottom
+                                 [ bsr_array(bc_block(bc='top_dp')), None, bsr_array(bc_block(bc='top'))] # y1 at surface
                                  ], format='csr'
                                  )
         
@@ -462,7 +415,7 @@ class dynamical:
         # output is a numpy array of lenght N
         return np.array(b)
 
-    def get_bc_block(self, bc='bot'):
+    def get_bc_block(self, bc: str = 'bot'):
         """
         Bottom boundary condition with a rigid core (no-slip).
         bc = {'bot', 'top'}
@@ -486,55 +439,17 @@ class dynamical:
         [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col != 0 else np.array([])), self.bcb(col+2, bc=bc), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  != 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
 
         return np.array(cols)
-
-    def add_bc(self, L, kind='bvp-core'):
-        """
-        Add the boundary conditions to the big matrix.
-        """
-        
-        # Vertically stack the rows containing the boundary conditions at the bottom of BigL
-        if kind == 'bvp':
-            # Flow covers the entire body, from center to surface
-            print('Solving core with alternative bottom bc')
-            self.BigL = np.vstack( (L, self.centerBc(), self.BigflowBc(kind='top')) )  
-
-        elif kind == 'bvp-core':
-            # Flow is restricted to a shell (i.e., global ocean)
-            
-            row1 = np.concatenate( [self.get_bc_block(bc='bot'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero')], axis=1) # y1 = 0 at ocean bottom
-            row2 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot_sf'), self.get_bc_block(bc='zero')], axis=1) # y3 = 0 at ocean bottom
-            row4 = np.concatenate( [self.get_bc_block(bc='top_dp'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='top')], axis=1) # y1 at surface
-            
-            # from continuity 
-            #row5 = np.concatenate( [self.get_bc_block(bc='bot_dx'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero')], axis=1)
-            row5 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot')], axis=1)
-            #row5 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='top'), self.get_bc_block(bc='zero')], axis=1)
-
-            row3 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='top_sf'), self.get_bc_block(bc='zero')], axis=1) # 
-            #row3 = np.concatenate( [self.get_bc_block(bc='y_1'), self.get_bc_block(bc='special'), self.get_bc_block(bc='zero')], axis=1) # 
-            # from eq 1.
-            row6 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot_dx')], axis=1) # dpsi at ocean bottom
-
-            self.BigL = np.concatenate( [L, row1, row2, row3, row5, row6, row4], axis=0 )  
-
-        return
     
-    def get_Bigf(self, kind='bvp'):
+    def get_Bigf(self, kind: str = 'bvp'):
         """
         Build the problem right-hand side matrix
         """
 
         m = self.order
 
-        norm = self.Rp/np.pi
-        
         # NOTE: both the evanescent central region (core) and central regularity have fbc=0.
-        FBCtop = [] 
-        for l in self.degree: 
-            # add the forcing (right-hand side) in the outer boundary condition (dp=0)
-            # Added a fix to dissipation.
-
-            FBCtop.append( self.Ulm(l,m) )
+        # add the forcing (right-hand side) in the outer boundary condition (dp=0)
+        FBCtop = [ self.Ulm(l,m) for l in self.degree ]
         
         # Concatenate the forcing and right-hand side of inner and outer boundary conditions.
         self.Bigf = np.concatenate( (self.f(), np.zeros(5*len(self.degree)), FBCtop ) )
@@ -542,7 +457,7 @@ class dynamical:
     # End building matrices
     ## ----------------------------------------------------------------------------
     
-    def solve(self, kind='bvp'):
+    def solve(self, kind: str = 'bvp'):
         """
         Solve the problem
         """

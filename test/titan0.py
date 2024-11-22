@@ -37,7 +37,7 @@ Rs = 5.8232e9
 rhow    = 1.     
 N2      = 1.e-8   # high order g-mode 
 
-H       = 50e5     # Ocean bottom depth  (cm)
+H       = 250e5     # Ocean bottom depth  (cm)
 tau     = 1e9       # frictional dissipation (1e5-1e11)
 # Chebyshev solver
 N = 80         # number of Chebyshev polynomialsi

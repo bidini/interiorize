@@ -10,6 +10,9 @@ from scipy.special import lpmv as Plm
 from scipy.special import factorial
 import pdb
 import matplotlib.pyplot as plt
+import time
+from sys import getsizeof
+from scipy.sparse import bsr_array, block_array, diags_array
 
 class internal_phi:
     '''
@@ -295,16 +298,59 @@ class dynamical:
     # The method is based on calculating coefficients that multiple analytical expressions for the 
     # derivatives of Chebyshev polynomials.
 
-    def get_eqn_block(self, eqn, kind='bvp'):
+    def block(self, pqr: list):
+        # This block evaluates any combination of the equation at a given degree l using a set of three coefficients that include the coupling.
+        B = []
+        [B.append( pqr[0]*self.cheby.d2Tn_x2(n) + pqr[1]*self.cheby.dTn_x(n) + pqr[2]*self.cheby.Tn(n) ) for n in self.n]
+
+        # The output should have size (len(xi), N); 27% filled matrix in avg.
+        return np.array(B).T
+
+    def cheby_SM(self):
         """
-        Build a block for a given equation and variable, sub element in left-hand side matrix
+        A matrix with cheby coefficients. Shape is (len(xi), N). An attempt to replace the 'block' function for a mat multiplication.
+        """
+        B  = [ np.concatenate([self.cheby.d2Tn_x2(n), self.cheby.dTn_x(n), self.cheby.Tn(n)])  for n in self.n]
+        return np.array(B).T
+
+    def get_eqn_sparse(self, eqn: list, kind: str = 'bvp'):
+        """
+        Build a sparse block for a given equation and variable, sub element in left-hand side matrix
+
+        Initial estimate of sparsity ~ 3e-4. Fraction of non-zero values is <0.03%
+
+        It produces a factor of 4.5 faster assembly time than previous solution (get_eqn_block) and a factor of ~30 in memory usage.
+
+        Results are the same to error 1e-11
         """
 
         xi = self.cheby.xi
         nxblocks = len(self.degree)
-        block0 = np.zeros((len(xi), self.N))
-        block_empty = np.array([[]]*len(xi))
+        ncol = nxblocks*self.N
+        nrow = len(xi)*nxblocks
+        
+        # define arrays of blocks
+        data = [ self.block(eqn(l)[i]) for l in self.degree for i in range(3) ]
+        del data[0], data[-1]
+        data = np.array(data)
 
+        indptr = [0, 2]
+        indptr += [ i for i in range(5, len(data), 3) ]
+        indptr += [len(data)]
+
+        indices = [0, 1]
+        indices += [ i+j for i in range(nxblocks-2) for j in range(3) ] 
+        indices += [ nxblocks-2, nxblocks-1]
+
+        L = bsr_array((data, indices, indptr), shape=(nrow, ncol))
+        L.eliminate_zeros()
+        
+        return L
+
+    def get_eqn_block(self, eqn: list, kind: str = 'bvp'):
+        """
+        Build a block for a given equation and variable, sub element in left-hand side matrix
+        """
         def block(pqr):
             # This block evaluates any combination of the equation at a given degree l using a set of three coefficients that include the coupling.
             B = []
@@ -312,7 +358,11 @@ class dynamical:
 
             # The output should have size (len(xi), N).
             return np.array(B).T
-
+        
+        xi = self.cheby.xi
+        nxblocks = len(self.degree)
+        block0 = np.zeros((len(xi), self.N))
+        block_empty = np.array([[]]*len(xi))
         # Concatenate horizontally to create the columns of BigL. Each row represents the coupled ODE at a given degree l.
         # The list eqn(l) has l-1 coupling on index 0, and l+1 coupling on index 2.
         PQR0 = eqn(2)
@@ -327,12 +377,14 @@ class dynamical:
 
         # Concatenate vertically to assamble the columns of BigL into a matrix
         L = np.concatenate( [first_row, np.concatenate(middle_rows, axis=0), last_row], axis=0 )
-        
+
         return L
 
     def get_BigL(self, kind='bvp-core'):
         """
         ensamble the left-hand side matrix of the problem. 
+        """
+        
         """
         block = self.get_eqn_block
         
@@ -344,59 +396,77 @@ class dynamical:
         BigL = np.concatenate( [row1, row2, row3 ])
         
         self.add_bc(BigL, kind=kind)
+        """
 
+        block = self.get_eqn_sparse
+
+        bc_block = self.get_bc_block
+        self.BigL = block_array( [[ block(self.eqn1_y1), block(self.eqn1_y3), block(self.eqn1_psi)],
+                                 [ block(self.eqn2_y1), block(self.eqn2_y3), None],
+                                 [ block(self.eqn3_y1), block(self.eqn3_y3), None],
+                                 [ bsr_array(bc_block(bc='bot')), None, None],
+                                 [ None, bsr_array(bc_block(bc='bot_sf')), None],
+                                 [ None, bsr_array(bc_block(bc='top_sf')), None],
+                                 [ None, None, bsr_array(bc_block(bc='bot'))],
+                                 [ None, None, bsr_array(bc_block(bc='bot_dx'))],
+                                 [ bsr_array(bc_block(bc='top_dp')), None, bsr_array(bc_block(bc='top'))] 
+                                 ], format='csr'
+                                 )
+        
         return 
     
+    def bcb(self, l, bc: str = 'bot', spec=None):
+        """
+        Block for boundary conditions. Analogous to self.block()
+        """
+        b = []
+        if bc == 'bot':
+            [b.append( self.cheby.Tn_bot(n) ) for n in self.n]
+
+        elif bc == 'top':
+            [b.append( self.cheby.Tn_top(n) ) for n in self.n]
+        
+        elif bc == 'top_dp':
+            [b.append( self.cheby.Tn_top(n)*(self.g - 4*np.pi*self.G*self.rho*self.Rp/(2*l+1)) ) for n in self.n]
+        
+        elif bc == 'bot_dx':
+            [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
+
+        elif bc == 'top_dx':
+            [b.append( self.cheby.dTndx_top(n) ) for n in self.n]
+
+        elif bc == 'top_sf':
+            """
+            Stress free bc at the top
+            """
+            [b.append( self.cheby.dTndx_top(n)/self.x2 - self.cheby.Tn_top(n)/self.x2**2 ) for n in self.n]
+        
+        elif bc == 'bot_sf':
+            """
+            Stress free bc at the bot
+            """
+            [b.append( self.cheby.dTndx_bot(n)/self.x1 - self.cheby.Tn_bot(n)/self.x1**2 ) for n in self.n]
+
+        elif bc == 'zero':
+            [b.append( 0 ) for n in self.n]
+
+        elif bc == 'y_1':
+            [b.append( (1j*self.om2/2/self.OM - 1j*self.order/l/(l+1))*self.cheby.d2Tndx2_bot(n)*self.x1/l/(l+1) ) for n in self.n]
+        """
+        elif spec == 'y3_minus':
+            [b.append( (l-1)/l*self.Qlm(l)*self.cheby.dTndx_bot(n) ) for n in self.n]
+
+        elif spec == 'y3_plus':
+            [b.append( (l+2)/(l+1)*self.Qlm(l+1)*self.cheby.dTndx_bot(n) ) for n in self.n]
+        """
+        # output is a numpy array of lenght N
+        return np.array(b)
+
     def get_bc_block(self, bc='bot'):
         """
         Bottom boundary condition with a rigid core (no-slip).
         bc = {'bot', 'top'}
         """
-        nbc = len(self.degree)
-        def bcb(l, spec=None):
-            b = []
-            if bc == 'bot':
-                [b.append( self.cheby.Tn_bot(n) ) for n in self.n]
-
-            elif bc == 'top':
-                [b.append( self.cheby.Tn_top(n) ) for n in self.n]
-            
-            elif bc == 'top_dp':
-                [b.append( self.cheby.Tn_top(n)*(self.g - 4*np.pi*self.G*self.rho*self.Rp/(2*l+1)) ) for n in self.n]
-            
-            elif bc == 'bot_dx':
-                [b.append( self.cheby.dTndx_bot(n) ) for n in self.n]
-
-            elif bc == 'top_dx':
-                [b.append( self.cheby.dTndx_top(n) ) for n in self.n]
-
-            elif bc == 'top_sf':
-                """
-                Stress free bc at the top
-                """
-                [b.append( self.cheby.dTndx_top(n)/self.x2 - self.cheby.Tn_top(n)/self.x2**2 ) for n in self.n]
-            
-            elif bc == 'bot_sf':
-                """
-                Stress free bc at the bot
-                """
-                [b.append( self.cheby.dTndx_bot(n)/self.x1 - self.cheby.Tn_bot(n)/self.x1**2 ) for n in self.n]
-
-            elif bc == 'zero':
-                [b.append( 0 ) for n in self.n]
-
-            elif spec == 'y3_minus':
-                [b.append( (l-1)/l*self.Qlm(l)*self.cheby.dTndx_bot(n) ) for n in self.n]
-
-            elif spec == 'y3_plus':
-                [b.append( (l+2)/(l+1)*self.Qlm(l+1)*self.cheby.dTndx_bot(n) ) for n in self.n]
-
-            elif bc == 'y_1':
-                [b.append( (1j*self.om2/2/self.OM - 1j*self.order/l/(l+1))*self.cheby.d2Tndx2_bot(n)*self.x1/l/(l+1) ) for n in self.n]
-
-
-            # output is a numpy array of lenght N
-            return np.array(b)
         
         if bc == 'special':
             
@@ -411,8 +481,9 @@ class dynamical:
             
             return np.array(cols)
 
+        nbc = len(self.degree)
         cols = []
-        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col != 0 else np.array([])), bcb(col+2), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  != 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
+        [cols.append( np.concatenate([ (np.concatenate([np.zeros(self.N)]*col) if col != 0 else np.array([])), self.bcb(col+2, bc=bc), (np.concatenate([np.zeros(self.N)]*(nbc-1-col)) if (nbc-1-col)  != 0 else np.array([]) )  ]) ) for col in range(0, nbc) ]
 
         return np.array(cols)
 
@@ -443,7 +514,6 @@ class dynamical:
             #row3 = np.concatenate( [self.get_bc_block(bc='y_1'), self.get_bc_block(bc='special'), self.get_bc_block(bc='zero')], axis=1) # 
             # from eq 1.
             row6 = np.concatenate( [self.get_bc_block(bc='zero'), self.get_bc_block(bc='zero'), self.get_bc_block(bc='bot_dx')], axis=1) # dpsi at ocean bottom
-
 
             self.BigL = np.concatenate( [L, row1, row2, row3, row5, row6, row4], axis=0 )  
 
